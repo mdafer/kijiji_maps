@@ -30,13 +30,13 @@
 				for (var i = 0; i < beaches.length; i++) {
 					var beach = beaches[i];
 					var marker = new google.maps.Marker({
-						position: new google.maps.LatLng(beach[2], beach[3]),
+						position: new google.maps.LatLng(beach.lat, beach.lon),
 						map: map,
-						title: beach[0],
+						title: beach.address,
 						// zIndex: beach[3]
 					});
 					bounds.extend(marker.position);
-					bindInfoWindow(marker, map, infowindow, '<h3>'+beach[5]+'</h3><a href="'+beach[4]+'" target="_blank">Voir sur Kijiji</a><br>'+beach[0]+'<br>'+beach[1]);
+					bindInfoWindow(marker, map, infowindow, '<h3>'+beach.title_ad+'</h3><a href="'+beach.url+'" target="_blank">Visit on Kijiji</a><br>'+beach.address+'<br>'+beach.price);
 				}
 
 			map.fitBounds(bounds);
@@ -53,7 +53,7 @@
 
 		</script>
 		<script async defer
-			src="https://maps.googleapis.com/maps/api/js?callback=initMap">
+			src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB2v345cdPoidR2kvlyJkSag0mcLYnZoTQ&callback=initMap">
 		</script>
 	</head>
 	<body>
@@ -62,7 +62,13 @@
 			<input type="text" name="url" id="url">
 			<input type="submit" value="Send"/>
 		</form>
-		<form action="/refresh" method="post" accept-charset="utf-8">
+		<form action="/refresh" method="get" accept-charset="utf-8">
+			<p>From:</p>
+			<input name='fromPrice' type="number" value=500></input>
+			<p>To:</p>
+			<input name='toPrice' type="number" value=1000></input>
+			<p>Oldest Date</p>
+			<input name='fromDate' type="date" value=2019-08-01></input>
 			<input id="loadButton" value="Reload" type="submit" type="button">
 		</form>
 		<div id="map" style="width:900px;height:500px;"></div>
