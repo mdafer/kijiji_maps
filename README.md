@@ -25,4 +25,7 @@ Once all results are fetched, results are filtered in MongoDB, so everything is 
 ![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps2.png "Kijiji maps 2")
 ![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps3.png "Kijiji maps 3")
 
+Search (in title only, or including description) where keyword: apartment exist but basement and room don't exist
+![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps4.png "Kijiji maps advanced search")
+
 this is meant for simple use and fun only; it does not necessarily reflect my coding style nor best practices.
