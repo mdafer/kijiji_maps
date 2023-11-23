@@ -1,27 +1,28 @@
-# Place kijiji classifieds on a map
+# Place kijiji classifieds on a map and do advanced search
 Fun with node and express.
-The Kijiji site does not allow ads to appear on a map. When looking for an apartment, it is not very convenient.
+The Kijiji site (used to) not show ads on a map. When looking for an apartment, it is not very convenient.
 Just do a search on the site then copy paste the url.
-The ads already scaped are put in a database mongodb not to make too much request on the server
+The ads are scaped and cached in a mongodb database.
 
-Run mongodb
+Docker Compose provided, so you just need to:
 
-```
-npm install
-node server.js
+1- setup the .env file in the top directory (base.env is provided, rename it to .env and modify it)
+2- setup the .env file in app/config (base.env is provided, rename it to dev.env and modify it)
+3- change the Google Map Key in app/views/index.html
+4- change the apiURL in views/js/API/common.js 
+5- you also need to provide a Facebook App Id if you want to use Facebook Login
 
-localhost:8081/maps
+I know that the previous 5 steps can be combined in 1 env file, but I'm sorry I'm a bit too lazy when it comes to projects that I'm just toying with :P
 
-Change Google Map Key
-```
+Socket works automatically since frontend is hosted on the same instance as backend
 
-Enter Customized Kijiji URL and click Send
+Sign up-> Create a new search -> Copy paste the first page's link of your search from Kijiji
 
-Wait for all pages to be fetched (need to click reload once it's done)
+Wait for all pages to be fetched (results are reloaded with every page fetched, but wouldn't hurt to refresh the page at the end just to make sure)
 Once all results are fetched, results are filtered in MongoDB, so everything is cached and local.
 
-Click Reload to apply filters.
+![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps1.png "Kijiji maps 1")
+![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps2.png "Kijiji maps 2")
+![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps3.png "Kijiji maps 3")
 
-![alt text](https://github.com/mdafer/kijiji_maps/blob/master/kijiji_maps.png "Kijiji maps")
-
-The code is based on the creator's; it has some bugs and lots of bad practices; this is meant for simple use and fun only; it does not reflect my coding style nor good practices.
+this is meant for simple use and fun only; it does not necessarily reflect my coding style nor best practices.
