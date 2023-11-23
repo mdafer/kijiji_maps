@@ -1,0 +1,297 @@
+<html style="min-height: 100%;">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!--<meta name="google-signin-client_id" content="894610727359-oha6r12f032jtf2c5hpohftcqnbq6gdb.apps.googleusercontent.com">-->
+  <title>Steve's Kijiji Maps</title>
+  <!-- Tell the browser to be responsive to screen width -->
+  <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+  <link rel="stylesheet" href="css/bootstrap.min.css">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="css/font-awesome.min.css">
+  <!-- Ionicons -->
+  <link rel="stylesheet" href="css/ionicons.min.css">
+  <!-- Theme style -->
+  <link rel="stylesheet" href="css/AdminLTE.min.css">
+  <link rel="stylesheet" href="css/skin-blue.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.8.0/css/bootstrap-datepicker.min.css">
+  <link rel="stylesheet" href="css/custom.css">
+
+
+  <!-- Google Font -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,300italic,400italic,600italic">
+  <script src="https://maps.googleapis.com/maps/api/js?key=Google-Maps-API-Key-Here&initAutocomplete&libraries=places&v=weekly"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
+</head>
+
+<body class="skin-blue sidebar-mini" style="height: auto; min-height: 100% !important;">
+  <div class="wrapper" style="height: auto; min-height: 100% !important;">
+    <header class="main-header">
+      <!-- Logo -->
+      <a href="#main" class="logo hidden-xs" onclick="loadpage('main');">
+        <!-- mini logo for sidebar mini 50x50 pixels -->
+        <span class="logo-mini"><b>K</b>Maps</span>
+        <!-- logo for regular state and mobile devices -->
+        <span class="logo-lg"><b>Kijiji</b>Maps</span>
+      </a>
+
+      <!-- Header Navbar: style can be found in header.less -->
+      <nav class="navbar navbar-static-top">
+        <!-- Sidebar toggle button-->
+        <a href="#" class="sidebar-toggle" data-toggle="push-menu" role="button">
+          <span class="sr-only">Toggle navigation</span>
+        </a>
+        <!-- Navbar Right Menu -->
+        <div class="navbar-custom-menu">
+          <ul class="nav navbar-nav">
+            
+            <li class="dropdown user user-menu">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
+                <img src="images/user2-160x160.jpg" class="user-image" alt="User Image">
+                <span id="TopRightName" class="hidden-xs"></span>
+              </a>
+              <ul class="dropdown-menu">
+                <!-- User image -->
+                <li class="user-header">
+                  <img src="images/user2-160x160.jpg" class="img-circle" alt="User Image">
+
+                  <p id="hiddenName">
+                    <!--Majid Nasirinejad
+                    <small>Member since Nov. 2012</small>-->
+                  </p>
+                </li>
+                <!-- Menu Body -->
+                
+                <!-- Menu Footer-->
+                <li class="user-footer">
+                  <div class="pull-left">
+                    <a href="#" class="btn btn-default btn-flat" data-toggle="modal" data-target="#profileModal">Profile</a>
+                  </div>
+                  <div class="pull-right">
+                    <a href="#main" class="btn btn-default btn-flat" onclick="logout()">Sign out</a>
+                  </div>
+                </li>
+              </ul>
+            </li>
+            <!-- Control Sidebar Toggle Button -->
+            <li>
+              
+            </li>
+          </ul>
+        </div>
+
+      </nav>
+    </header>
+    <!-- Left side column. contains the logo and sidebar -->
+    <aside class="main-sidebar">
+      <!-- sidebar: style can be found in sidebar.less -->
+      <section class="sidebar" style="height: auto;">
+        <!-- Sidebar user panel -->
+        <div class="user-panel">
+          <div class="pull-left image">
+            <img src="images/user2-160x160.jpg" class="img-circle" alt="User Image">
+          </div>
+          <div class="pull-left info">
+            <p style='margin-top: 1em;' id="sidebarName"></p>
+            
+          </div>
+        </div>
+        <!-- search form -->
+        
+        <!-- /.search form -->
+        <!-- sidebar menu: : style can be found in sidebar.less -->
+        <ul class="sidebar-menu tree" data-widget="tree">
+          <li class="header">MAIN NAVIGATION</li>
+
+          <li>
+            <a href="#main"  onclick='loadpage("main");'>
+              <i class="fa fa-home"></i> <span>Home</span>
+              
+            </a>
+          </li>
+          
+
+          <li><a href="#searches" onclick='loadpage("searches")'><i class="fa fa-circle-o text-green"></i> <span>Searches</span></a></li>
+          <li><a href="#map" onclick='loadpage("map")'><i class="fa fa-circle-o text-green"></i> <span>Map</span></a></li>
+          <li><a href="#neighbors" onclick='loadpage("neighbors")'><i class="fa fa-circle-o text-aqua" ></i> <span>Friends</span></a></li>
+          <!--<li><a target="_blank" href="http://getgoldoon.com/#contact"><i class="fa fa-circle-o text-white"></i> <span>Contact US</span></a></li>-->
+        </ul>
+      </section>
+      <!-- /.sidebar -->
+    </aside>
+
+    <!-- Content Wrapper. Contains page content -->
+    <div class="content-wrapper">
+      <!-- Content Header (Page header) -->
+      <div id="maincontent"></div>
+
+      
+      
+      
+    </div>
+    <!-- /.content-wrapper -->
+
+    <footer class="main-footer hidden-xs">
+      <div class="pull-right hidden-xs">
+        <b>Version</b> 0.0.1
+      </div>
+      <strong>Copyright © 2020</strong> All rights
+      reserved.
+    </footer>
+
+    <!-- Control Sidebar -->
+    
+    <!-- /.control-sidebar -->
+    <!-- Add the sidebar's background. This div must be placed
+         immediately after the control sidebar -->
+    
+
+  </div>
+  <!-- ./wrapper -->
+
+  <!-- Login Modal-->
+  <div id="loginModal" class="modal fade" role="dialog" style="display: none;">
+    <div class="modal-dialog">
+
+      <!-- Modal content-->
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4 id="loginTitle" class="modal-title">Login</h4>
+        </div>
+        <div class="modal-body">
+          <div class="box-body">
+            <form role="form" id="loginForm" data-toggle="validator" encType="multipart/form-data">
+              <div style="display:none;" class="form-group registration-group">
+                <label for="profilePicture">Profile Picture</label>
+                <input type="file" name="profilePicture" size = '5'>
+              </div>
+              <div style="display:none;" class="form-group registration-group">
+                <label>First Name</label>
+                <input name="firstName" type="text" class="form-control" placeholder="First Name" required>
+              </div>
+              <div style="display:none;" class="form-group registration-group">
+                <label>Last Name</label>
+                <input name="lastName" type="text" class="form-control" placeholder="Last Name" required>
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input name="email" type="text" class="form-control" placeholder="Email" required>
+              </div><!-- text input -->
+              <div class="form-group passwordBox">
+                <label>Password</label>
+                <input name = "password" type="password" class="form-control" placeholder="Password" required>
+              </div>
+              <input type="submit" value="Submit" style="display:none;">
+            </form>
+            <a class="form-group login-group" onclick="switchPassReset();" href="#">Forgot Password?</a>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="pull-left">
+            <button id="loginButton" type="button" class="btn btn-success">Register</button>
+          </div>
+          <div class="pull-right">
+            <button type="button" class="btn btn-primary" onclick="$('#loginForm').submit();">Submit</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- Modal END-->
+
+  <!-- Profile Modal-->
+  <div id="profileModal" class="modal fade" role="dialog" style="display: none;">
+    <div class="modal-dialog">
+
+      <!-- Modal content-->
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4 id="loginTitle" class="modal-title">Profile</h4>
+        </div>
+        <div class="modal-body">
+          <div class="box-body">
+            <form role="form" id="profileForm" data-toggle="validator">
+              <div style='align-items: center;text-align: center;'>
+                <img height="25%" width="25%" src="images/user2-160x160.jpg" class="img-circle" alt="User Image">
+              </div>
+              <div class="form-group" style='text-align: center;'>
+                <label for="profilePicture">Profile Picture</label>
+                <input type="file" name="profilePicture" size = '5'>
+              </div>
+              <div class="form-group">
+                <label>First Name</label>
+                <input name="firstName" type="text" class="form-control" placeholder="First Name">
+              </div>
+              <div class="form-group">
+                <label>Last Name</label>
+                <input name="lastName" type="text" class="form-control" placeholder="Last Name">
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input name="email" type="text" class="form-control" placeholder="Email" disabled>
+              </div><!-- text input -->
+              <div class="form-group">
+                <label>Change Password</label>
+                <input name = "password" type="password" class="form-control" placeholder="Password">
+              </div>
+              <input type="submit" value="Submit" style="display:none;">           
+            </form>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="pull-left">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+          </div>
+          <div class="pull-right">
+            <button type="button" class="btn btn-primary" onclick="$('#profileForm').submit();">Submit</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- Modal END-->
+</body></html>
+<!-- REQUIRED JS SCRIPTS -->
+
+<!-- jQuery 3 -->
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<!-- Bootstrap 3.3.7 -->
+<script src="js/bootstrap.min.js"></script>
+
+<!-- AdminLTE App -->
+<script src="js/adminlte.min.js"></script>
+
+<script src="js/jquery.slimscroll.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/1000hz-bootstrap-validator/0.11.9/validator.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.8.0/js/bootstrap-datepicker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.9.1/underscore-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.31/moment-timezone-with-data-1970-2030.min.js"></script>
+<!--<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.19/lodash.min.js"></script>-->
+
+<script src="js/helpers/common.js"></script>
+<script src="js/helpers/historyManager.js"></script>
+<script src="js/helpers/map.js"></script>
+<script src="js/controllers/map.js"></script>
+<script src="pages/main.js"></script>
+<script src="pages/searches.js"></script>
+<script src="pages/map.js"></script>
+<script src="pages/causedetail.js"></script>
+<script src="pages/neighbordetail.js"></script>
+
+<!--API scripts-->
+<script src="js/API/common.js"></script>
+<script src="js/API/users.js"></script>
+<script src="js/API/searches.js"></script>
+<script src="js/API/map.js"></script>
+
+<script>
+  socket=io()
+  
+  $(function () {
+    renderpage();
+  });
+</script>
