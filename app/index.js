@@ -1,5 +1,4 @@
-require('dotenv').config()//to load environment variables
-require('./config/config.js')
+require('dotenv').config()
 const express = require('express'),
 	app     = express(),
 	http = require('http').Server(app),//for socketio
@@ -95,7 +94,8 @@ app.get('/emitTest', function(req, res, next){
 
 app.put('/job', [
   		check('name').trim().escape().isLength({ min: 1 }),
-  		check('url').exists().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca']})),
+  		check('url').exists().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com']})),
+  		check('platform').optional().trim().escape().isIn(['kijiji', 'airbnb']),
   		check('description').trim().escape()
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.newJob);

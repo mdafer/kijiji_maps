@@ -6,17 +6,13 @@ The ads are scaped and cached in a mongodb database.
 
 Docker Compose provided, so you just need to:
 
-1- setup the .env file in the top directory (base.env is provided, rename it to .env and modify it)
+1- setup the .env file in the top directory (example.env is provided, copy it to .env and modify it)
 
-2- setup the .env file in app/config (base.env is provided, rename it to dev.env and modify it)
+2- change the Google Map Key in app/views/index.html
 
-3- change the Google Map Key in app/views/index.html
+3- change the apiURL in views/js/API/common.js
 
-4- change the apiURL in views/js/API/common.js 
-
-5- you also need to provide a Facebook App Id if you want to use Facebook Login
-
-I know that the previous 5 steps can be combined in 1 env file, but I'm sorry I'm a bit too lazy when it comes to projects that I'm just toying with :P
+4- you also need to provide a Facebook App Id if you want to use Facebook Login
 
 Socket works automatically since frontend is hosted on the same instance as backend
 

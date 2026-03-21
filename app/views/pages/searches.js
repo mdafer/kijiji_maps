@@ -30,6 +30,7 @@ var searchespage= `<!-- Content Header (Page header) -->
                   <thead>
                   <tr>
                     <th>Actions</th>
+                    <th>Platform</th>
                     <th>Status</th>
                     <th>Name</th>
                     <th>Description</th>
@@ -68,12 +69,19 @@ var searchespage= `<!-- Content Header (Page header) -->
         <div class="box-body">
           <form role="form" id="newSearchForm" data-toggle="validator">
             <div class="form-group">
+              <label>Platform</label>
+              <select id="newSearchPlatform" name="platform" class="form-control" required>
+                <option value="kijiji">Kijiji</option>
+                <option value="airbnb">Airbnb</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label>Name</label>
               <input name="name" type="text" class="form-control" placeholder="Search Name" required>
             </div><!-- text input -->
             <div class="form-group">
-              <label>Kijiji First Page Link (after you click search)</label>
-              <input name="url" type="text" class="form-control" placeholder="https://www.kijiji.com/..." required>
+              <label id="newSearchUrlLabel">First Page Link (after you click search)</label>
+              <input name="url" type="text" class="form-control" id="newSearchUrlInput" placeholder="https://www.kijiji.ca/..." required>
             </div>
             
 
@@ -146,6 +154,25 @@ var searchespage= `<!-- Content Header (Page header) -->
 function searchesfunc()
 {
   $('#searchesTBody').html('')
+
+  // Set platform filter from URL params
+  var searchPlatformFilter = urlParams.platform || null
+  if(searchPlatformFilter) {
+    $('#newSearchPlatform').val(searchPlatformFilter)
+  }
+
+  // Update URL placeholder when platform changes
+  $('#newSearchPlatform').on('change', function() {
+    var plat = $(this).val()
+    if(plat === 'airbnb') {
+      $('#newSearchUrlInput').attr('placeholder', 'https://www.airbnb.ca/s/Toronto/...')
+      $('#newSearchUrlLabel').text('Airbnb Search Link')
+    } else {
+      $('#newSearchUrlInput').attr('placeholder', 'https://www.kijiji.ca/...')
+      $('#newSearchUrlLabel').text('Kijiji First Page Link (after you click search)')
+    }
+  }).trigger('change')
+
   APIgetProfile(null, function(user){
     if(!user.jobs || !user.jobs.length)
     {
@@ -159,10 +186,12 @@ function searchesfunc()
       return
     }
     jobs = user.jobs
-    for(let i=0;i< user.jobs.length;i++)
+    // Filter by platform if specified
+    var filteredJobs = searchPlatformFilter ? user.jobs.filter(j => (j.platform || 'kijiji') === searchPlatformFilter) : user.jobs
+    for(let i=0;i< filteredJobs.length;i++)
     {
       let statusDom;
-      switch(user.jobs[i].statusCode)
+      switch(filteredJobs[i].statusCode)
       {
         case 0:
           statusDom = '<td><span class="label label-danger">Failed</span></td>'
@@ -174,19 +203,25 @@ function searchesfunc()
           statusDom = '<td><span class="label label-warning">Pending</span></td>'
         break
       }
+      let platform = filteredJobs[i].platform || 'kijiji'
+      let platformLabel = platform === 'airbnb'
+        ? '<td><span class="label label-danger">Airbnb</span></td>'
+        : '<td><span class="label label-info">Kijiji</span></td>'
+      let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : 'Kijiji Link'
       $('#searchesTBody').append(`
         <tr>
           <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
           <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
           </td>
+          ${platformLabel}
           ${statusDom}
-          <td><a href="/index.html#map?jobId=${user.jobs[i].id}&jobName=${user.jobs[i].name}">${user.jobs[i].name}</a></td>
-          <td>${user.jobs[i].description}</td>
-          <td><a target="_blank" href="${user.jobs[i].url}">Kijiji Link</a></td>
+          <td><a href="/index.html#map?jobId=${filteredJobs[i].id}&jobName=${filteredJobs[i].name}&platform=${platform}">${filteredJobs[i].name}</a></td>
+          <td>${filteredJobs[i].description}</td>
+          <td><a target="_blank" href="${filteredJobs[i].url}">${linkLabel}</a></td>
         </tr>
       `)
-      $( "#searchesTBody .editSearchBtn" ).last().data('id', user.jobs[i].id).data('name',$.parseHTML(user.jobs[i].name || ' ')[0].data).data('description',$.parseHTML(user.jobs[i].description||' ')[0].data)
-      $( "#searchesTBody .delSearchBtn" ).last().data('id', user.jobs[i].id)
+      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data)
+      $( "#searchesTBody .delSearchBtn" ).last().data('id', filteredJobs[i].id)
       $(".BStooltip").tooltip({ trigger: 'hover' })
     }
 
@@ -236,5 +271,6 @@ function searchesUnload()
 {
   $('#newSearchForm').off('submit')
   $('#editSearchForm').off('submit')
+  $('#newSearchPlatform').off('change')
   socket.removeAllListeners()
 }

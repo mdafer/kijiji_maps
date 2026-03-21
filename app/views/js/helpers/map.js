@@ -26,7 +26,8 @@ function setMarkersByAds(map, ads, centerLocation = false) {
     });
 
     _markers.push(marker)
-    bindInfoWindow(marker, map, infowindow, '<h4 style="max-width:200px">'+ad.title+'</h4><h4>$'+ad.price+'</h4><h4><a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">Visit on Kijiji</a></h4>');
+    var visitLabel = ad.url.includes('airbnb') ? 'Visit on Airbnb' : 'Visit on Kijiji'
+    bindInfoWindow(marker, map, infowindow, '<h4 style="max-width:200px">'+ad.title+'</h4><h4>$'+ad.price+'</h4><h4><a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">'+visitLabel+'</a></h4>');
   })
 }
 

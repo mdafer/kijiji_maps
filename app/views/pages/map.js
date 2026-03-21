@@ -4,7 +4,7 @@ var mappage= `<!-- Content Header (Page header) -->
       <button class="btn btn-light" type="button" onclick="loadpage('main', true);">
         <span class="fa fa-chevron-left" aria-hidden="true"></span>
       </button><h1 id="mapTitle" style="display: inline;vertical-align:  middle;">
-        Steve's Kijiji Maps
+        Listing Maps
         <small></small>
       </h1>
       
@@ -28,7 +28,7 @@ var mappage= `<!-- Content Header (Page header) -->
         </div>
       </div>
       <button type="button" class="btn btn-primary BStooltip" rel="tooltip" data-placement="top" title="Filters & Settings" data-toggle="modal" data-target="#mapFiltersModal"><i class="fa fa-sliders"></i></button>
-      <button type="button" class="btn btn-success BStooltip" rel="tooltip" data-placement="top" title="Reset all ads from Kijiji" onclick="resetJob()"><i class="fa fa-refresh"></i></button>
+      <button type="button" class="btn btn-success BStooltip" rel="tooltip" data-placement="top" title="Reset all ads" onclick="resetJob()"><i class="fa fa-refresh"></i></button>
       <button type="button" class="btn btn-default BStooltip" rel="tooltip" data-placement="top" title="Information" data-toggle="modal" data-target="#informationModal"><i class="glyphicon glyphicon-info-sign"></i></button>
     </section>
 

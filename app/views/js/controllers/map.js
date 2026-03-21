@@ -177,7 +177,8 @@ function rebuildViewedList()
 
 function resetJob()
 {
-  let retVal = confirm("Are you sure you want to update ads of this search from Kijiji?")
+  var platformName = (urlParams.platform === 'airbnb') ? 'Airbnb' : 'Kijiji'
+  let retVal = confirm("Are you sure you want to update ads of this search from " + platformName + "?")
   if(!retVal)
     return false
   $('#informationModal').modal('show')

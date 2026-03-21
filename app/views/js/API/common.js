@@ -1,3 +1,3 @@
-var apiURL = 'http://kijiji.localhost/',
+var apiURL = '/',
 	token = '',
 	clearStorageErrorCodes=[-1,10]

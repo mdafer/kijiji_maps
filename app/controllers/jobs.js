@@ -6,7 +6,8 @@ uuid = require('uuid-random')
 
 module.exports = {
 	newJob: async function(params, authUser, callback){
-		const job = {id:uuid(), statusCode:2, name:params.name, url: params.url, description: params.description}
+		const platform = params.platform || 'kijiji'
+		const job = {id:uuid(), statusCode:2, name:params.name, url: params.url, description: params.description, platform}
 		await params.db.get('users').update({"email":authUser.email},{"$push": {"jobs":job}})
 			.catch((err) => {Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'});return callback({ status: Helpers.ApiStatus.DB_ERROR, meta: err})})//.then(() => db.close())
 		params.jobUrl = job.url
@@ -15,7 +16,8 @@ module.exports = {
 		params.pageNumber = 0
 		params.jobName = job.name
 		callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: job.id}})
-		const pagesProcessed = await Helpers.scraper.processPage(params)
+		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : Helpers.scraper
+		const pagesProcessed = await scraper.processPage(params)
 		Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:pagesProcessed}, channels:authUser._id+'command'})
 		Helpers.logger.log({ command:'doneProcAndValid', print: pagesProcessed, channels:job.id+'command'})
 		params.db.get('users').update({"jobs.id":job.id},{"$set": {"jobs.$.statusCode":1}})
@@ -66,14 +68,15 @@ module.exports = {
 			params.pageUrl = job.url
 			params.jobName = job.name
 			callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: params.jobId}})
-			await Helpers.scraper.processPage(params)
+			const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : Helpers.scraper
+			await scraper.processPage(params)
 			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, pages:params.pageNumber}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: params.pageNumber, channels:params.jobId+'command'})
 		}).catch((err) => {Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})})//.then(() => db.close())
 	},
 	processPendingJobs: function(params, authUser, callback){
 		Helpers.logger.log("Checking for stale pending jobs...")
-		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name'}}]).then((jobs) => {
+		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name', platform:'$jobs.platform'}}]).then((jobs) => {
 			if(!jobs || jobs.length==0)
 			{
 				callback({ status: Helpers.ApiStatus.NO_PENDING_JOBS, meta:{status:'In Progress', jobs}})
@@ -90,7 +93,8 @@ module.exports = {
 				myparams.jobName = job.name
 				myparams.pageNumber = 0
 				myparams.pageUrl = job.url
-				const processedPages = await Helpers.scraper.processPage(myparams)
+				const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : Helpers.scraper
+				const processedPages = await scraper.processPage(myparams)
 				Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:processedPages}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: processedPages, channels:job.id+'command'})
 			})

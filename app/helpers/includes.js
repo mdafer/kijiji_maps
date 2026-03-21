@@ -9,7 +9,8 @@ module.exports = {
 			this.ApiStatus= require('../helpers/api-status'),
 			this.queue=require('../helpers/queue'),
 			this.common=require('../helpers/common'),
-			this.scraper= require('../helpers/scraper')
+			this.scraper= require('../helpers/scraper'),
+			this.airbnbScraper= require('../helpers/airbnb-scraper')
 		}
 		return this
 	},

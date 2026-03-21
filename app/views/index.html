@@ -3,7 +3,7 @@
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <!--<meta name="google-signin-client_id" content="894610727359-oha6r12f032jtf2c5hpohftcqnbq6gdb.apps.googleusercontent.com">-->
-  <title>Steve's Kijiji Maps</title>
+  <title>Steve's Listing Maps</title>
   <!-- Tell the browser to be responsive to screen width -->
   <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
   <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -30,9 +30,9 @@
       <!-- Logo -->
       <a href="#main" class="logo hidden-xs" onclick="loadpage('main');">
         <!-- mini logo for sidebar mini 50x50 pixels -->
-        <span class="logo-mini"><b>K</b>Maps</span>
+        <span class="logo-mini"><b>L</b>Maps</span>
         <!-- logo for regular state and mobile devices -->
-        <span class="logo-lg"><b>Kijiji</b>Maps</span>
+        <span class="logo-lg"><b>Listing</b>Maps</span>
       </a>
 
       <!-- Header Navbar: style can be found in header.less -->
@@ -111,8 +111,16 @@
           </li>
           
 
-          <li><a href="#searches" onclick='loadpage("searches")'><i class="fa fa-circle-o text-green"></i> <span>Searches</span></a></li>
-          <li><a href="#map" onclick='loadpage("map")'><i class="fa fa-circle-o text-green"></i> <span>Map</span></a></li>
+          <li class="treeview">
+            <a href="#"><i class="fa fa-search text-green"></i> <span>Searches</span>
+              <span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span>
+            </a>
+            <ul class="treeview-menu">
+              <li><a href="#searches" onclick='return loadpage("searches?platform=kijiji", true)'><i class="fa fa-circle-o text-green"></i> Kijiji</a></li>
+              <li><a href="#searches" onclick='return loadpage("searches?platform=airbnb", true)'><i class="fa fa-circle-o text-red"></i> Airbnb</a></li>
+            </ul>
+          </li>
+          <li><a href="#map" onclick='loadpage("map")'><i class="fa fa-map text-green"></i> <span>Map</span></a></li>
           <li><a href="#neighbors" onclick='loadpage("neighbors")'><i class="fa fa-circle-o text-aqua" ></i> <span>Friends</span></a></li>
           <!--<li><a target="_blank" href="http://getgoldoon.com/#contact"><i class="fa fa-circle-o text-white"></i> <span>Contact US</span></a></li>-->
         </ul>
@@ -167,11 +175,11 @@
               </div>
               <div style="display:none;" class="form-group registration-group">
                 <label>First Name</label>
-                <input name="firstName" type="text" class="form-control" placeholder="First Name" required>
+                <input name="firstName" type="text" class="form-control" placeholder="First Name">
               </div>
               <div style="display:none;" class="form-group registration-group">
                 <label>Last Name</label>
-                <input name="lastName" type="text" class="form-control" placeholder="Last Name" required>
+                <input name="lastName" type="text" class="form-control" placeholder="Last Name">
               </div>
               <div class="form-group">
                 <label>Email</label>

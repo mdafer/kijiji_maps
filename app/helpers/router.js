@@ -1,5 +1,3 @@
-// Load environment variables first.
-require('../config/config.js');
 const ApiStatus = require('./api-status')
  Helpers = require('../helpers/includes'),
 { check, validationResult } = require('express-validator'),
