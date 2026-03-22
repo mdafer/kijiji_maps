@@ -1,8 +1,9 @@
 require('dotenv').config()
 const express = require('express'),
 	app     = express(),
-	http = require('http').Server(app),//for socketio
-	io = require('socket.io')(http),
+	http = require('http').Server(app),
+	{ Server } = require('socket.io'),
+	io = new Server(http),
 	Helpers = require('./helpers/includes.js').initialize(io),
 	validator = require('validator'),
 	{ check, validationResult } = require('express-validator'),
@@ -13,7 +14,6 @@ const express = require('express'),
 	MongoClient = require('mongodb').MongoClient,
 	MongoObjectId = require('mongodb').ObjectID,
 	format = require('util').format,
-	bodyParser = require('body-parser'),
 	db = monk('mongo:27017/kijiji_maps',{
 		username : process.env.MONGODB_USERNAME,
 		password : process.env.MONGODB_PASSWORD
@@ -30,10 +30,9 @@ app.get('/config.js', (req, res) => {
 
 app.use(express.static('views'));
 // support parsing of application/json type post data
-app.use(bodyParser.json())
-//app.use(bodyParser.text())
+app.use(express.json())
 //support parsing of application/x-www-form-urlencoded post data
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true }));
 
 app.get('*', (req, res, next) => {
 	if(req.query)

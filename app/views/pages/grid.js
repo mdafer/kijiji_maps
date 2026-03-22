@@ -81,10 +81,11 @@ var gridpage = `
 var _gridMode = 'cards'
 var _gridAds = []
 var _gridRenderedCount = 0
-var _gridBatchSize = 20
+var _gridBatchSize = 50
 var _gridAllAmenities = new Set()
 var _gridAmenityIdMap = {}
 var _gridSavedDisplayAmenities = []
+var _gridScrollTimer = null
 
 function gridfunc() {
   $('#gridTitle').text(jobName + ' - Grid View')
@@ -127,6 +128,7 @@ function gridfunc() {
 function gridUnload() {
   $('#gridFiltersForm').off('submit')
   $(window).off('scroll.gridInfinite')
+  if(_gridScrollTimer) { clearTimeout(_gridScrollTimer); _gridScrollTimer = null }
 }
 
 function loadGridAds(params) {
@@ -167,24 +169,29 @@ function renderGrid() {
 
 function onGridScroll() {
   if(_gridRenderedCount >= _gridAds.length) return
-  var scrollBottom = $(window).scrollTop() + $(window).height()
-  var docHeight = $(document).height()
-  if(scrollBottom >= docHeight - 400)
-    renderGridBatch()
+  if(_gridScrollTimer) return
+  _gridScrollTimer = setTimeout(function(){
+    _gridScrollTimer = null
+    var scrollBottom = $(window).scrollTop() + $(window).height()
+    var docHeight = $(document).height()
+    if(scrollBottom >= docHeight - 600)
+      renderGridBatch()
+  }, 80)
 }
 
 function renderGridBatch() {
-  var inner = $('#gridInner')
-  if(!inner.length) return
+  var inner = document.getElementById('gridInner')
+  if(!inner) return
   var end = Math.min(_gridRenderedCount + _gridBatchSize, _gridAds.length)
+  var frag = document.createDocumentFragment()
+  var tmp = document.createElement('div')
   var html = ''
   for(var i = _gridRenderedCount; i < end; i++) {
-    if(_gridMode === 'cards')
-      html += buildCardHtml(_gridAds[i])
-    else
-      html += buildRowHtml(_gridAds[i])
+    html += _gridMode === 'cards' ? buildCardHtml(_gridAds[i]) : buildRowHtml(_gridAds[i])
   }
-  inner.append(html)
+  tmp.innerHTML = html
+  while(tmp.firstChild) frag.appendChild(tmp.firstChild)
+  inner.appendChild(frag)
   _gridRenderedCount = end
   if(_gridRenderedCount < _gridAds.length)
     $('.grid-resultscount').text('Results: ' + _gridAds.length + ' (showing ' + _gridRenderedCount + ')')
@@ -194,7 +201,7 @@ function renderGridBatch() {
 
 function buildCardHtml(ad) {
   var img = ad.picture_url || ''
-  var imgHtml = img ? '<img class="grid-card-img" src="'+img+'" referrerpolicy="no-referrer">' : '<div class="grid-card-img grid-card-noimg"><i class="fa fa-image"></i></div>'
+  var imgHtml = img ? '<img class="grid-card-img" src="'+img+'" referrerpolicy="no-referrer" loading="lazy">' : '<div class="grid-card-img grid-card-noimg"><i class="fa fa-image"></i></div>'
   var pics = ad.picture_urls || []
   var photoBtnHtml = pics.length > 1
     ? '<button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))"><i class="fa fa-camera"></i> '+pics.length+'</button>'

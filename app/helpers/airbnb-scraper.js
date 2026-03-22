@@ -72,20 +72,21 @@ function extractListingsFromApiResponse(data) {
 					const listing = item.listing
 					const pricing = item.pricing_quote || item.pricingQuote || {}
 
-					if (!listing || !listing.id) continue
-					if (seenIds.has(listing.id)) continue
-					seenIds.add(listing.id)
+					const listingId = listing.id_str || String(listing.id)
+					if (!listing || !listingId) continue
+					if (seenIds.has(listingId)) continue
+					seenIds.add(listingId)
 
 					const amenities = listing.preview_amenities || listing.amenities || listing.preview_amenity_names
 						|| item.preview_amenities || item.amenities || []
 
 					listings.push({
-						id: listing.id,
+						id: listingId,
 						title: listing.name || listing.title || '',
 						lat: listing.lat || (listing.coordinate && listing.coordinate.latitude) || 0,
 						lon: listing.lng || (listing.coordinate && listing.coordinate.longitude) || 0,
 						price: extractPrice(pricing),
-						url: '/rooms/' + listing.id,
+						url: '/rooms/' + listingId,
 						picture_url: listing.picture_url || listing.xl_picture_url || listing.picture || '',
 						picture_urls: extractPictureUrls(listing),
 						bedrooms: listing.bedrooms || 0,
@@ -110,16 +111,17 @@ function extractListingsFromApiResponse(data) {
 function findNestedListings(obj, results = [], seenIds = new Set()) {
 	if (!obj || typeof obj !== 'object') return results
 
-	if (obj.listing && obj.listing.id && obj.listing.lat !== undefined) {
-		if (!seenIds.has(obj.listing.id)) {
-			seenIds.add(obj.listing.id)
+	if (obj.listing && (obj.listing.id_str || obj.listing.id) && obj.listing.lat !== undefined) {
+		const listingId = obj.listing.id_str || String(obj.listing.id)
+		if (!seenIds.has(listingId)) {
+			seenIds.add(listingId)
 			results.push({
-				id: obj.listing.id,
+				id: listingId,
 				title: obj.listing.name || obj.listing.title || '',
 				lat: obj.listing.lat,
 				lon: obj.listing.lng,
 				price: extractPrice(obj.pricing_quote || obj.pricingQuote || obj.pricing),
-				url: '/rooms/' + obj.listing.id,
+				url: '/rooms/' + listingId,
 				picture_url: obj.listing.picture_url || obj.listing.xl_picture_url || obj.listing.picture || '',
 				picture_urls: extractPictureUrls(obj.listing),
 				bedrooms: obj.listing.bedrooms || 0,
