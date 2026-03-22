@@ -26,7 +26,7 @@
       window.googleMapsReady = new Promise(function(resolve) {
         window.__googleMapsCallback = resolve;
         var s = document.createElement('script');
-        s.src = 'https://maps.googleapis.com/maps/api/js?key=' + APP_CONFIG.GOOGLE_MAPS_KEY + '&libraries=places&v=weekly&callback=__googleMapsCallback';
+        s.src = 'https://maps.googleapis.com/maps/api/js?key=' + APP_CONFIG.GOOGLE_MAPS_KEY + '&libraries=places,drawing,geometry&v=weekly&callback=__googleMapsCallback';
         s.async = true;
         document.head.appendChild(s);
       });
@@ -259,7 +259,14 @@
                 <label>Change Password</label>
                 <input name = "password" type="password" class="form-control" placeholder="Password">
               </div>
-              <input type="submit" value="Submit" style="display:none;">           
+              <div class="form-group">
+                <label>Display Amenities <small style="color:#888">(shown on listings · none selected = show all)</small></label>
+                <input id="profileDisplayAmenities" name="displayAmenities" type="hidden">
+                <div id="profileDisplayAmenityBubbles" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">
+                  <small style="color:#999">Open a search first to populate amenities</small>
+                </div>
+              </div>
+              <input type="submit" value="Submit" style="display:none;">
             </form>
           </div>
         </div>

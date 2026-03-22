@@ -150,7 +150,9 @@ function updateAmenityBubbles(){
   if(!andContainer.length && !orContainer.length) return
   var andSelected = (($('#amenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
   var orSelected = (($('#orAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
-  var sorted = Array.from(_allAmenities).sort()
+  var allSorted = Array.from(_allAmenities).sort()
+  var displayList = getDisplayAmenities()
+  var sorted = displayList.length ? allSorted.filter(function(a){ return displayList.indexOf(a) !== -1 }) : allSorted
   var andHtml = '', orHtml = ''
   sorted.forEach(function(a){
     var idTooltip = _amenityIdMap[a] ? ' title="Airbnb ID: '+_amenityIdMap[a]+'"' : ''
@@ -207,4 +209,81 @@ function syncAmenityInputs(){
 
 function getDisplayAmenities(){
   return _savedDisplayAmenities
+}
+
+// --- Drawing tools for geographic filtering ---
+var _drawingManager = null
+var _drawnShape = null
+var _markersHiddenByShape = []
+
+function startDrawing(){
+  if(_drawnShape) clearDrawnShape()
+  if(!_drawingManager) {
+    _drawingManager = new google.maps.drawing.DrawingManager({
+      drawingControl: false,
+      circleOptions: { fillColor: '#2196F3', fillOpacity: 0.15, strokeColor: '#2196F3', strokeWeight: 2, editable: true },
+      polygonOptions: { fillColor: '#2196F3', fillOpacity: 0.15, strokeColor: '#2196F3', strokeWeight: 2, editable: true }
+    })
+    google.maps.event.addListener(_drawingManager, 'overlaycomplete', function(e){
+      _drawnShape = e.overlay
+      _drawingManager.setDrawingMode(null)
+      applyShapeFilter()
+      // Re-apply filter when shape is edited
+      if(e.type === 'circle') {
+        google.maps.event.addListener(_drawnShape, 'radius_changed', applyShapeFilter)
+        google.maps.event.addListener(_drawnShape, 'center_changed', applyShapeFilter)
+      } else {
+        google.maps.event.addListener(_drawnShape.getPath(), 'set_at', applyShapeFilter)
+        google.maps.event.addListener(_drawnShape.getPath(), 'insert_at', applyShapeFilter)
+      }
+      $('#drawAreaBtn').addClass('btn-primary').removeClass('btn-default')
+      $('#clearShapeBtn').show()
+    })
+  }
+  _drawingManager.setMap(map)
+  // Show a simple choice: circle or polygon
+  var mode = confirm('Click OK to draw a circle, or Cancel to draw a polygon.')
+    ? google.maps.drawing.OverlayType.CIRCLE
+    : google.maps.drawing.OverlayType.POLYGON
+  _drawingManager.setDrawingMode(mode)
+}
+
+function applyShapeFilter(){
+  // Show any previously hidden markers first
+  _markersHiddenByShape.forEach(function(m){ m.setMap(map) })
+  _markersHiddenByShape = []
+  if(!_drawnShape) return
+  _markers.forEach(function(marker){
+    var pos = marker.getPosition()
+    var inside = false
+    if(_drawnShape.getBounds) {
+      // Circle
+      var center = _drawnShape.getCenter()
+      var radius = _drawnShape.getRadius()
+      inside = google.maps.geometry.spherical.computeDistanceBetween(pos, center) <= radius
+    } else {
+      // Polygon
+      inside = google.maps.geometry.poly.containsLocation(pos, _drawnShape)
+    }
+    if(!inside && marker.getMap()) {
+      marker.setMap(null)
+      _markersHiddenByShape.push(marker)
+    }
+  })
+  var visibleCount = _markers.length - _markersHiddenByShape.length
+  $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ visibleCount + ' (filtered by area)')
+}
+
+function clearDrawnShape(){
+  if(_drawnShape) {
+    _drawnShape.setMap(null)
+    _drawnShape = null
+  }
+  if(_drawingManager) _drawingManager.setDrawingMode(null)
+  // Restore hidden markers
+  _markersHiddenByShape.forEach(function(m){ m.setMap(map) })
+  _markersHiddenByShape = []
+  $('#drawAreaBtn').removeClass('btn-primary').addClass('btn-default')
+  $('#clearShapeBtn').hide()
+  $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
 }

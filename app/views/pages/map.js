@@ -31,6 +31,10 @@ var mappage= `<!-- Content Header (Page header) -->
       <button type="button" class="btn btn-success BStooltip" rel="tooltip" data-placement="top" title="Reset all ads" onclick="resetJob()"><i class="fa fa-refresh"></i></button>
       <button type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Clear cached listings" onclick="clearJobCache()"><i class="fa fa-trash"></i></button>
       <a class="btn btn-default BStooltip" rel="tooltip" data-placement="top" title="Grid View" href="#grid" onclick="loadpage('grid', true)"><i class="fa fa-th"></i></a>
+      <div class="btn-group" style="margin-left:2px">
+        <button id="drawAreaBtn" type="button" class="btn btn-default BStooltip" rel="tooltip" data-placement="top" title="Draw area to filter listings" onclick="startDrawing()"><i class="fa fa-pencil"></i></button>
+        <button id="clearShapeBtn" type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Clear drawn shape" onclick="clearDrawnShape()" style="display:none"><i class="fa fa-times"></i></button>
+      </div>
       <button type="button" class="btn btn-default BStooltip" rel="tooltip" data-placement="top" title="Information" data-toggle="modal" data-target="#informationModal"><i class="glyphicon glyphicon-info-sign"></i></button>
     </section>
 
@@ -214,12 +218,9 @@ function mapfunc()
   if(urlParams.orAmenities)
     $("#orAmenities").val(urlParams.orAmenities)
 
-  // Load displayAmenities from saved job config
+  // Load displayAmenities from user account settings
   APIgetProfile(null, function(user){
-    if(user && user.jobs) {
-      var job = user.jobs.find(function(j){ return j.id === jobId })
-      if(job && job.displayAmenities) _savedDisplayAmenities = job.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
-    }
+    if(user && user.displayAmenities) _savedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
   })
 
   $('#mapFiltersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })
@@ -276,4 +277,7 @@ function mapUnload()
 {
   $('#mapFiltersForm').off('submit')
   socket.removeAllListeners()
+  if(_drawingManager) { _drawingManager.setMap(null) }
+  if(_drawnShape) { _drawnShape.setMap(null); _drawnShape = null }
+  _markersHiddenByShape = []
 }

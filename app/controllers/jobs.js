@@ -29,7 +29,7 @@ module.exports = {
 			if (!user)
 				return callback({ status: ApiStatus.NOT_FOUND, meta: null })
 			let job = user.jobs.find(job => { return job.id == params.id})
-			Object.assign(job, pick(params, ['name', 'description', 'displayAmenities']))
+			Object.assign(job, pick(params, ['name', 'description']))
 			job = await params.db.get('users').findOneAndUpdate({"jobs.id":params.id},{$set: {"jobs.$":job}})
 			callback({status: ApiStatus.SUCCESS, meta: job})
 		}

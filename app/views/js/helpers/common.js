@@ -45,6 +45,51 @@ $('#profileForm').on('submit', function(event) {
 	})
 });
 
+$('#profileModal').on('show.bs.modal', function(){
+	var bubblesDiv = $('#profileDisplayAmenityBubbles')
+	bubblesDiv.html('<small style="color:#999">Loading amenities...</small>')
+	APIgetProfile(null, function(user){
+		var savedDA = (user.displayAmenities || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
+		$('#profileDisplayAmenities').val(user.displayAmenities || '')
+		if(!user.jobs || !user.jobs.length) {
+			bubblesDiv.html('<small style="color:#999">No searches found</small>')
+			return
+		}
+		// Fetch amenities from all jobs
+		var allAmenities = new Set()
+		var allIdMap = {}
+		var pending = user.jobs.length
+		user.jobs.forEach(function(job){
+			APIgetJobAmenities(job.id, function(data){
+				if(data && data.amenities) data.amenities.forEach(function(a){ allAmenities.add(a) })
+				if(data && data.amenityIdMap) Object.assign(allIdMap, data.amenityIdMap)
+				pending--
+				if(pending <= 0) {
+					var sorted = Array.from(allAmenities).sort()
+					if(!sorted.length) {
+						bubblesDiv.html('<small style="color:#999">No amenities found across searches</small>')
+						return
+					}
+					var html = ''
+					sorted.forEach(function(a){
+						var idTooltip = allIdMap[a] ? ' title="Airbnb ID: '+allIdMap[a]+'"' : ''
+						var active = savedDA.indexOf(a) !== -1
+						html += '<span class="amenity-filter-bubble amenity-display'+(active?' active':'')+'"'+idTooltip+' onclick="toggleProfileDisplayAmenity(this)">'+a+'</span>'
+					})
+					bubblesDiv.html(html)
+				}
+			})
+		})
+	})
+});
+
+function toggleProfileDisplayAmenity(el){
+	$(el).toggleClass('active')
+	var selected = []
+	$('#profileDisplayAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
+	$('#profileDisplayAmenities').val(selected.join(','))
+}
+
 function logout()
 {
 	try{

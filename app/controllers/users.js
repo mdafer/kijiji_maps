@@ -45,7 +45,7 @@ module.exports = {
 			let user = await params.db.get('users').findOne({ '_id': authUser._id })
 			if (!user)
 				return callback({ status: ApiStatus.EMAIL_NOT_FOUND, meta: null })
-			let userObject = pick(params,['email', 'firstName', 'lastName'])
+			let userObject = pick(params,['email', 'firstName', 'lastName', 'displayAmenities'])
 			if(params.password)
 				userObject.password = bcrypt.hashSync(params.password, 10)
 			userObject = await params.db.get('users').findOneAndUpdate({_id:authUser._id},{$set: userObject})

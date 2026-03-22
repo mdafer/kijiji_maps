@@ -104,12 +104,9 @@ function gridfunc() {
   if(urlParams.amenities) $('#gridAmenities').val(urlParams.amenities)
   if(urlParams.orAmenities) $('#gridOrAmenities').val(urlParams.orAmenities)
 
-  // Load displayAmenities from saved job config
+  // Load displayAmenities from user account settings
   APIgetProfile(null, function(user){
-    if(user && user.jobs) {
-      var job = user.jobs.find(function(j){ return j.id === jobId })
-      if(job && job.displayAmenities) _gridSavedDisplayAmenities = job.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
-    }
+    if(user && user.displayAmenities) _gridSavedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
   })
 
   $(".BStooltip").tooltip({ trigger: 'hover' })
@@ -288,7 +285,9 @@ function updateGridAmenityBubbles() {
   if(!andContainer.length && !orContainer.length) return
   var andSelected = ($('#gridAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
   var orSelected = ($('#gridOrAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-  var sorted = Array.from(_gridAllAmenities).sort()
+  var allSorted = Array.from(_gridAllAmenities).sort()
+  var displayList = getGridDisplayAmenities()
+  var sorted = displayList.length ? allSorted.filter(function(a){ return displayList.indexOf(a) !== -1 }) : allSorted
   var andHtml = '', orHtml = ''
   sorted.forEach(function(a) {
     var idTooltip = _gridAmenityIdMap[a] ? ' title="Airbnb ID: '+_gridAmenityIdMap[a]+'"' : ''

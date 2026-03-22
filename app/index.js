@@ -82,7 +82,8 @@ app.patch('/user', [
 		check('firstName').optional().trim().escape(),
 		check('lastName').optional().trim().escape(),
   		check('email').optional().isEmail().normalizeEmail(),
-  		check('password').optional().isLength({ min: 8 })
+  		check('password').optional().isLength({ min: 8 }),
+  		check('displayAmenities').optional().trim().escape()
 	],function(req, res, next){
 	Helpers.router.finish(req, res, Controllers.users.updateUser);
 });
