@@ -153,6 +153,8 @@ function updateAmenityBubbles(){
   var allSorted = Array.from(_allAmenities).sort()
   var displayList = getDisplayAmenities()
   var sorted = displayList.length ? allSorted.filter(function(a){ return displayList.indexOf(a) !== -1 }) : allSorted
+  var searchTerm = ($('#amenitySearch').val() || '').toLowerCase()
+  if(searchTerm) sorted = sorted.filter(function(a){ return a.toLowerCase().indexOf(searchTerm) !== -1 })
   var andHtml = '', orHtml = ''
   sorted.forEach(function(a){
     var idTooltip = _amenityIdMap[a] ? ' title="Airbnb ID: '+_amenityIdMap[a]+'"' : ''

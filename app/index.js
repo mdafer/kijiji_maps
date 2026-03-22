@@ -2,18 +2,16 @@ require('dotenv').config()
 const express = require('express'),
 	app     = express(),
 	http = require('http').Server(app),
-	{ Server } = require('socket.io'),
-	io = new Server(http),
+	socketio = require('socket.io'),
+	SocketServer = socketio.Server || socketio,
+	io = new SocketServer(http),
 	Helpers = require('./helpers/includes.js').initialize(io),
 	validator = require('validator'),
 	{ check, validationResult } = require('express-validator'),
 	//Models = require('./models/includes'),
 	Controllers = require('./controllers/includes'),
-	//MogoDB
+	//MongoDB
 	monk = require('monk'),
-	MongoClient = require('mongodb').MongoClient,
-	MongoObjectId = require('mongodb').ObjectID,
-	format = require('util').format,
 	db = monk('mongo:27017/kijiji_maps',{
 		username : process.env.MONGODB_USERNAME,
 		password : process.env.MONGODB_PASSWORD

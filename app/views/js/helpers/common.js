@@ -90,6 +90,14 @@ function toggleProfileDisplayAmenity(el){
 	$('#profileDisplayAmenities').val(selected.join(','))
 }
 
+function filterProfileAmenityBubbles(){
+	var term = ($('#profileAmenitySearch').val() || '').toLowerCase()
+	$('#profileDisplayAmenityBubbles .amenity-filter-bubble').each(function(){
+		var match = !term || $(this).text().toLowerCase().indexOf(term) !== -1
+		$(this).toggle(match)
+	})
+}
+
 function logout()
 {
 	try{

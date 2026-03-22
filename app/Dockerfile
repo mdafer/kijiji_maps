@@ -1,9 +1,11 @@
-FROM node:20-alpine
+FROM node:24-alpine
+
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /usr/src/app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+COPY package.json yarn.lock ./
+RUN yarn install --production --frozen-lockfile && apk del python3 make g++
 
 COPY . .
 

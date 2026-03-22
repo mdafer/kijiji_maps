@@ -12,6 +12,16 @@ var gridpage = `
       </div>
       <a class="btn btn-default btn-sm BStooltip" title="Switch to Map view" href="#map" onclick="loadpage('map', true)"><i class="fa fa-map"></i></a>
       <button type="button" class="btn btn-primary btn-sm BStooltip" title="Filters & Settings" data-toggle="modal" data-target="#gridFiltersModal"><i class="fa fa-sliders"></i></button>
+      <div class="btn-group" style="margin-left:6px">
+        <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown"><i class="fa fa-sort"></i> Sort <span class="caret"></span></button>
+        <ul class="dropdown-menu">
+          <li><a href="#" onclick="sortGrid('price','asc');return false"><i class="fa fa-sort-amount-asc"></i> Price: Low to High</a></li>
+          <li><a href="#" onclick="sortGrid('price','desc');return false"><i class="fa fa-sort-amount-desc"></i> Price: High to Low</a></li>
+          <li class="divider"></li>
+          <li><a href="#" onclick="sortGrid('date','desc');return false"><i class="fa fa-sort-amount-desc"></i> Date: Newest First</a></li>
+          <li><a href="#" onclick="sortGrid('date','asc');return false"><i class="fa fa-sort-amount-asc"></i> Date: Oldest First</a></li>
+        </ul>
+      </div>
       <p class="grid-resultscount" style="display:inline;margin-left:10px;font-size:13px">Results: 0</p>
     </section>
 
@@ -54,6 +64,9 @@ var gridpage = `
               <input type="checkbox" id="gridMinPhotosCheck" value="2" onchange="$('#gridMinPhotos').val(this.checked?'2':'')">
               <label for="gridMinPhotosCheck">Hide listings with 1 or no photos</label>
               <input id="gridMinPhotos" name="minPhotos" type="hidden">
+            </div>
+            <div class="form-group">
+              <input id="gridAmenitySearch" type="text" class="form-control input-sm" placeholder="Search amenities..." oninput="updateGridAmenityBubbles()" style="margin-bottom:8px">
             </div>
             <div class="form-group">
               <label>AND Amenities <small style="color:#888">(all must match)</small></label>
@@ -140,6 +153,22 @@ function loadGridAds(params) {
     })
     renderGrid()
   })
+}
+
+function sortGrid(field, dir) {
+  _gridAds.sort(function(a, b) {
+    var va, vb
+    if(field === 'price') {
+      va = parseFloat(a.price) || 0
+      vb = parseFloat(b.price) || 0
+    } else {
+      // date from MongoDB ObjectId (first 8 hex chars = unix timestamp)
+      va = a._id ? parseInt(a._id.substring(0, 8), 16) : 0
+      vb = b._id ? parseInt(b._id.substring(0, 8), 16) : 0
+    }
+    return dir === 'asc' ? va - vb : vb - va
+  })
+  renderGrid()
 }
 
 function setGridMode(mode) {
@@ -288,6 +317,8 @@ function updateGridAmenityBubbles() {
   var allSorted = Array.from(_gridAllAmenities).sort()
   var displayList = getGridDisplayAmenities()
   var sorted = displayList.length ? allSorted.filter(function(a){ return displayList.indexOf(a) !== -1 }) : allSorted
+  var searchTerm = ($('#gridAmenitySearch').val() || '').toLowerCase()
+  if(searchTerm) sorted = sorted.filter(function(a){ return a.toLowerCase().indexOf(searchTerm) !== -1 })
   var andHtml = '', orHtml = ''
   sorted.forEach(function(a) {
     var idTooltip = _gridAmenityIdMap[a] ? ' title="Airbnb ID: '+_gridAmenityIdMap[a]+'"' : ''

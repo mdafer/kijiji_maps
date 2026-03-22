@@ -217,7 +217,7 @@ function openPhotoGallery(urls)
 {
   var html = ''
   urls.forEach(function(url){
-    html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="toggleGalleryExpand(this)">'
+    html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" loading="lazy" onclick="openPhotoZoom(this.src)">'
   })
   $('#photoGalleryContent').html(html)
   $('#photoGalleryOverlay').fadeIn(200)
@@ -226,13 +226,21 @@ function openPhotoGallery(urls)
 
 function closePhotoGallery()
 {
+  closePhotoZoom()
   $('#photoGalleryOverlay').fadeOut(200)
   $('body').css('overflow','')
 }
 
-function toggleGalleryExpand(img)
+function openPhotoZoom(src)
 {
-  $(img).toggleClass('gallery-expanded')
+  $('#photoGalleryZoomImg').attr('src', src)
+  $('#photoGalleryZoom').addClass('active')
+}
+
+function closePhotoZoom()
+{
+  $('#photoGalleryZoom').removeClass('active')
+  $('#photoGalleryZoomImg').attr('src', '')
 }
 
 function clearJobCache()

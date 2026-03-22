@@ -100,6 +100,9 @@ var mappage= `<!-- Content Header (Page header) -->
               <input id="minPhotos" name="minPhotos" type="hidden">
             </div>
             <div class="form-group">
+              <input id="amenitySearch" type="text" class="form-control input-sm" placeholder="Search amenities..." oninput="updateAmenityBubbles()" style="margin-bottom:8px">
+            </div>
+            <div class="form-group">
               <label>AND Amenities <small style="color:#888">(all must match)</small></label>
               <input id="amenities" name="amenities" type="hidden">
               <div id="amenityBubblesAnd" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
