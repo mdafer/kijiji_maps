@@ -29,7 +29,7 @@ module.exports = {
 			if (!user)
 				return callback({ status: ApiStatus.NOT_FOUND, meta: null })
 			let job = user.jobs.find(job => { return job.id == params.id})
-			Object.assign(job, pick(params, ['name', 'description']))
+			Object.assign(job, pick(params, ['name', 'description', 'displayAmenities']))
 			job = await params.db.get('users').findOneAndUpdate({"jobs.id":params.id},{$set: {"jobs.$":job}})
 			callback({status: ApiStatus.SUCCESS, meta: job})
 		}
@@ -73,6 +73,18 @@ module.exports = {
 			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, pages:params.pageNumber}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: params.pageNumber, channels:params.jobId+'command'})
 		}).catch((err) => {Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})})//.then(() => db.close())
+	},
+	clearJobAds: async function(params, authUser, callback){
+		try{
+			let user = await params.db.get('users').findOne({"jobs.id":params.jobId})
+			if(!user)
+				return callback({ status: ApiStatus.NOT_FOUND, meta: {message:"Job '"+params.jobId+"' not found"}})
+			let result = await params.db.get('ads').remove({["jobs."+params.jobId]:{ $exists: true}}, {multi:true})
+			return callback({status:ApiStatus.SUCCESS, meta:{status:'Cleared', jobId: params.jobId, removed: result.result.n}})
+		}
+		catch(err) {
+			Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})
+		}
 	},
 	processPendingJobs: function(params, authUser, callback){
 		Helpers.logger.log("Checking for stale pending jobs...")

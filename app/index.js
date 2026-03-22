@@ -23,6 +23,11 @@ db.then(() => {
 	Helpers.logger.log('Connected to database')
 })
 
+app.get('/config.js', (req, res) => {
+	res.type('application/javascript');
+	res.send(`var APP_CONFIG = { GOOGLE_MAPS_KEY: "${process.env.GOOGLE_MAPS_KEY || ''}" };`);
+});
+
 app.use(express.static('views'));
 // support parsing of application/json type post data
 app.use(bodyParser.json())
@@ -58,6 +63,12 @@ app.get('/markers', function(req, res, next){
 	check('jobId').trim().escape().isLength({ min: 2 })
 	Helpers.router.finish(req, res, Controllers.map.getMarkers);
 });
+
+app.get('/jobAmenities', function(req, res, next){
+	check('jobId').trim().escape().isLength({ min: 2 })
+	Helpers.router.finish(req, res, Controllers.map.getJobAmenities);
+});
+
 
 app.post('/user', [
   		check('firstName').trim().escape().isLength({ min: 2 }),
@@ -104,7 +115,8 @@ app.put('/job', [
 app.patch('/job', [
 		check('id').exists(),
 		check('name').optional().trim().escape(),
-  		check('description').optional().trim().escape()
+  		check('description').optional().trim().escape(),
+  		check('displayAmenities').optional().trim().escape()
 	],function(req, res, next){
 	Helpers.router.finish(req, res, Controllers.jobs.updateJob);
 });
@@ -126,6 +138,12 @@ app.post('/deleteJob', [
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.rebuildJob);
 });*/
+
+app.post('/clearJobAds', [
+  		check('jobId').exists(),
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.jobs.clearJobAds);
+});
 
 app.post('/checkLatestAds', [
   		check('jobId').exists(),

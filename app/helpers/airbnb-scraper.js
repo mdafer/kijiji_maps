@@ -76,13 +76,23 @@ function extractListingsFromApiResponse(data) {
 					if (seenIds.has(listing.id)) continue
 					seenIds.add(listing.id)
 
+					const amenities = listing.preview_amenities || listing.amenities || listing.preview_amenity_names
+						|| item.preview_amenities || item.amenities || []
+
 					listings.push({
 						id: listing.id,
 						title: listing.name || listing.title || '',
 						lat: listing.lat || (listing.coordinate && listing.coordinate.latitude) || 0,
 						lon: listing.lng || (listing.coordinate && listing.coordinate.longitude) || 0,
 						price: extractPrice(pricing),
-						url: '/rooms/' + listing.id
+						url: '/rooms/' + listing.id,
+						picture_url: listing.picture_url || listing.xl_picture_url || listing.picture || '',
+						picture_urls: extractPictureUrls(listing),
+						bedrooms: listing.bedrooms || 0,
+						bathrooms: listing.bathrooms || 0,
+						beds: listing.beds || 0,
+						person_capacity: listing.person_capacity || 0,
+						amenities
 					})
 				}
 			}
@@ -109,7 +119,14 @@ function findNestedListings(obj, results = [], seenIds = new Set()) {
 				lat: obj.listing.lat,
 				lon: obj.listing.lng,
 				price: extractPrice(obj.pricing_quote || obj.pricingQuote || obj.pricing),
-				url: '/rooms/' + obj.listing.id
+				url: '/rooms/' + obj.listing.id,
+				picture_url: obj.listing.picture_url || obj.listing.xl_picture_url || obj.listing.picture || '',
+				picture_urls: extractPictureUrls(obj.listing),
+				bedrooms: obj.listing.bedrooms || 0,
+				bathrooms: obj.listing.bathrooms || 0,
+				beds: obj.listing.beds || 0,
+				person_capacity: obj.listing.person_capacity || 0,
+				amenities: obj.listing.preview_amenities || obj.listing.amenities || obj.listing.preview_amenity_names || []
 			})
 		}
 		return results
@@ -122,6 +139,21 @@ function findNestedListings(obj, results = [], seenIds = new Set()) {
 	}
 
 	return results
+}
+
+function extractPictureUrls(listing) {
+	if (!listing) return []
+	// Try various known fields for photo arrays
+	if (listing.picture_urls && listing.picture_urls.length) return listing.picture_urls
+	if (listing.photos && listing.photos.length) {
+		return listing.photos.map(p => p.picture || p.large || p.medium || p.small || p.xl_picture || '').filter(Boolean)
+	}
+	if (listing.images && listing.images.length) {
+		return listing.images.map(p => p.url || p.picture || '').filter(Boolean)
+	}
+	// Fallback: return the single picture if available
+	const single = listing.picture_url || listing.xl_picture_url || listing.picture || ''
+	return single ? [single] : []
 }
 
 function extractPrice(pricing) {
@@ -145,84 +177,222 @@ function extractPrice(pricing) {
 	return 0
 }
 
+/**
+ * Fetch full details (photos, amenities) for a single listing via the Airbnb API
+ * and update the DB record. Returns the updated fields.
+ */
+/**
+ * Fetch listing details by scraping the listing page HTML and parsing
+ * the embedded data-deferred-state JSON (niobeClientData).
+ * The old v2 API (api/v2/listings/) is dead.
+ */
+async function fetchListingDetails(listingId, bookingParams) {
+	const qp = new URLSearchParams()
+	if (bookingParams) {
+		for (const [k, v] of Object.entries(bookingParams)) {
+			if (v) qp.set(k, v)
+		}
+	}
+	const qs = qp.toString()
+	const url = 'https://www.airbnb.com/rooms/' + listingId + (qs ? '?' + qs : '')
+
+	const resp = await axios.get(url, {
+		...requestConfig,
+		maxRedirects: 5,
+		timeout: 15000
+	})
+
+	const html = typeof resp.data === 'string' ? resp.data : ''
+	if (!html) return null
+
+	// Extract the data-deferred-state-0 script tag content
+	const match = html.match(/<script\s+id="data-deferred-state-0"[^>]*>([\s\S]*?)<\/script>/)
+	if (!match) return null
+
+	const deferred = JSON.parse(match[1])
+	const niobe = deferred.niobeClientData
+	if (!niobe || !niobe.length) return null
+
+	// Find the StaysPdpSections entry
+	const pdpEntry = niobe.find(entry => Array.isArray(entry) && typeof entry[0] === 'string' && entry[0].startsWith('StaysPdpSections'))
+	if (!pdpEntry) return null
+
+	const sections = pdpEntry[1]
+		&& pdpEntry[1].data
+		&& pdpEntry[1].data.presentation
+		&& pdpEntry[1].data.presentation.stayProductDetailPage
+		&& pdpEntry[1].data.presentation.stayProductDetailPage.sections
+		&& pdpEntry[1].data.presentation.stayProductDetailPage.sections.sections
+	if (!sections || !sections.length) return null
+
+	const photos = []
+	const amenityNames = []
+	const amenityIdMap = {}
+
+	for (const s of sections) {
+		const sid = s.sectionId || ''
+
+		// Extract photos from PHOTO_TOUR (full set) or HERO (preview set)
+		if (sid === 'PHOTO_TOUR_SCROLLABLE_MODAL' && !photos.length) {
+			const items = (s.section && s.section.mediaItems) || []
+			items.forEach(img => {
+				if (img.baseUrl) photos.push(img.baseUrl)
+			})
+		}
+		if (sid === 'HERO_DEFAULT' && !photos.length) {
+			const items = (s.section && s.section.previewImages) || []
+			items.forEach(img => {
+				if (img.baseUrl) photos.push(img.baseUrl)
+			})
+		}
+
+		// Extract amenities
+		if (sid === 'AMENITIES_DEFAULT') {
+			const groups = (s.section && s.section.seeAllAmenitiesGroups) || (s.section && s.section.previewAmenitiesGroups) || []
+			groups.forEach(grp => {
+				(grp.amenities || []).forEach(a => {
+					if (a.available !== false && a.title) {
+						amenityNames.push(a.title)
+						if (a.id) amenityIdMap[a.title] = a.id
+					}
+				})
+			})
+		}
+	}
+
+	return {
+		picture_urls: photos,
+		amenities: amenityNames,
+		amenityIdMap
+	}
+}
+
+/**
+ * Scrape a single price range. Returns total listing count found.
+ * Does NOT handle cleanup or job status — caller handles that.
+ */
+async function scrapeRange(params, priceMin, priceMax) {
+	const maxResults = Number(process.env.AIRBNB_MAX_RESULTS) || 270
+	const rangeLabel = priceMax != null ? `$${priceMin}-$${priceMax}` : `$${priceMin}+`
+	Helpers.logger.log({print: `Scraping price range: ${rangeLabel}`, channels:params.jobId+'jobUpdate'})
+
+	let offset = 0
+	let hasMore = true
+	let totalFound = 0
+
+	while (params.pageUrl && hasMore) {
+		try {
+			params.pageNumber++
+			let user = await params.db.get('users').findOne({'jobs.id': params.jobId})
+			let jobStatusCode = user ? user.jobs.find(job => job.id == params.jobId).statusCode : 0
+			if (!user || !jobStatusCode || jobStatusCode < 2) {
+				Helpers.logger.log({print: `Job ${params.jobId} ${params.jobName} statusCode changed abruptly or job not found`, channels:params.jobId+'jobUpdate'})
+				return -1 // signal abort
+			}
+
+			const apiParams = buildApiParams(params.pageUrl)
+			// Override price range for this sub-range
+			apiParams.set('price_min', String(priceMin))
+			if (priceMax != null) apiParams.set('price_max', String(priceMax))
+			else apiParams.delete('price_max')
+			if (offset > 0) apiParams.set('items_offset', String(offset))
+			const apiUrl = 'https://www.airbnb.com/api/v2/explore_tabs?' + apiParams.toString()
+
+			Helpers.logger.log({print: `[${rangeLabel}] Fetching Airbnb API (offset: ${offset}) - ${apiUrl}`, channels:params.jobId+'jobUpdate'})
+			let resp = await axios.get(apiUrl, requestConfig)
+
+			let listings = []
+			let paginationMeta = null
+			if (resp.data && typeof resp.data === 'object') {
+				listings = extractListingsFromApiResponse(resp.data)
+				try {
+					const tabs = resp.data.explore_tabs || []
+					if (tabs.length) paginationMeta = tabs[0].pagination_metadata
+				} catch(e) {}
+			}
+
+			if (!listings.length) {
+				Helpers.logger.log({print: `[${rangeLabel}] No listings found (offset: ${offset}). Range complete.`, channels:params.jobId+'jobUpdate'})
+				hasMore = false
+				break
+			}
+
+			totalFound += listings.length
+			Helpers.logger.log({print: `[${rangeLabel}] Found ${listings.length} listings on page ${params.pageNumber} (${totalFound} total in range)`, channels:params.jobId+'jobUpdate'})
+
+			await module.exports.processPageListings(params, listings)
+
+			if (paginationMeta && paginationMeta.has_next_page === false) {
+				hasMore = false
+			} else {
+				offset += listings.length
+			}
+
+			await Helpers.common.sleep(requestDelay)
+		} catch(e) {
+			params.pageNumber--
+			Helpers.logger.log({print: `[${rangeLabel}] Retrying Airbnb page in ${requestErrorDelay/1000}s: ${e}`, channels:params.jobId+'jobWarning'})
+			await Helpers.common.sleep(requestErrorDelay)
+		}
+	}
+
+	Helpers.logger.log({print: `[${rangeLabel}] Range complete: ${totalFound} listings found`, channels:params.jobId+'jobUpdate'})
+
+	// If we hit the max, split this range in half and recurse
+	if (totalFound >= maxResults && priceMax != null && priceMax - priceMin > 1) {
+		const mid = Math.floor((priceMin + priceMax) / 2)
+		Helpers.logger.log({print: `[${rangeLabel}] Hit max results (${maxResults}), splitting into $${priceMin}-$${mid} and $${mid}-$${priceMax}`, channels:params.jobId+'jobUpdate'})
+		const countLow = await scrapeRange(params, priceMin, mid)
+		if (countLow === -1) return -1
+		const countHigh = await scrapeRange(params, mid, priceMax)
+		if (countHigh === -1) return -1
+		return totalFound + countLow + countHigh
+	}
+
+	return totalFound
+}
+
 module.exports = {
 	processPage: async function (params, callback=null){
 		Helpers.logger.log({print: 'Processing Airbnb listings for: '+params.jobName, channels:params.jobId+'jobUpdate'})
 		if (!params.pageUrl || params.pageUrl == "")
 			return
 		params.index_site = 0
-		let jobStatusCode = 2
 		params.fingerprint = Math.floor(Math.random() * (99999999999999 - 1 + 1) ) + 1
-		let offset = 0
-		const itemsPerPage = 50
-		let hasMore = true
 
-		while(params.pageUrl && hasMore){
-			try{
-				params.pageNumber++
-				let user = await params.db.get('users').findOne({'jobs.id':params.jobId})
-				if(user)
-					jobStatusCode = user.jobs.find(job => { return job.id == params.jobId}).statusCode
-				if(!user || !jobStatusCode || jobStatusCode<2)
-				{
-					if(callback)
-						callback(`Job ${params.jobId} ${params.jobName} statusCode changed abruptly or job not found`,false)
-					Helpers.logger.log({print: `Job ${params.jobId} ${params.jobName} statusCode changed abruptly or job not found`, channels:params.jobId+'jobUpdate'})
-					return
-				}
-
-				// Build API URL from the search page URL
-				const apiParams = buildApiParams(params.pageUrl)
-				if (offset > 0) {
-					apiParams.set('items_offset', String(offset))
-				}
-				const apiUrl = 'https://www.airbnb.com/api/v2/explore_tabs?' + apiParams.toString()
-
-				Helpers.logger.log({print: `Fetching Airbnb API (offset: ${offset})`, channels:params.jobId+'jobUpdate'})
-				let resp = await axios.get(apiUrl, requestConfig)
-
-				let listings = []
-				let paginationMeta = null
-
-				if (resp.data && typeof resp.data === 'object') {
-					listings = extractListingsFromApiResponse(resp.data)
-					// Extract pagination info
-					try {
-						const tabs = resp.data.explore_tabs || []
-						if (tabs.length) {
-							paginationMeta = tabs[0].pagination_metadata
-						}
-					} catch(e) {}
-				}
-
-				if (!listings.length) {
-					Helpers.logger.log({print: `No listings found (offset: ${offset}). Scraping complete.`, channels:params.jobId+'jobUpdate'})
-					hasMore = false
-					break
-				}
-
-				Helpers.logger.log({print: `Found ${listings.length} listings on page ${params.pageNumber}`, channels:params.jobId+'jobUpdate'})
-
-				await module.exports.processPageListings(params, listings)
-
-				// Check pagination
-				if (paginationMeta && paginationMeta.has_next_page) {
-					offset += itemsPerPage
-				} else if (listings.length >= itemsPerPage) {
-					// API might not report has_next_page correctly, try next offset anyway
-					offset += itemsPerPage
-				} else {
-					hasMore = false
-				}
-
-				await Helpers.common.sleep(requestDelay)
+		// Extract booking params from search URL and remap to listing page format
+		try {
+			const searchUrl = new URL(params.pageUrl)
+			params.bookingParams = {}
+			const paramMap = {
+				checkin: 'check_in',
+				checkout: 'check_out',
+				adults: 'adults',
+				children: 'children',
+				infants: 'infants',
+				pets: 'pets'
 			}
-			catch(e){
-				params.pageNumber--
-				Helpers.logger.log({print: `Retrying Airbnb page in ${requestErrorDelay/1000}s: ${e}`, channels:params.jobId+'jobWarning'})
-			    await Helpers.common.sleep(requestErrorDelay)
+			for (const [searchKey, listingKey] of Object.entries(paramMap)) {
+				const val = searchUrl.searchParams.get(searchKey)
+				if (val) params.bookingParams[listingKey] = val
 			}
+		} catch(e) {
+			params.bookingParams = {}
 		}
+
+		// Extract the user's original price range from the search URL
+		let origPriceMin = 0
+		let origPriceMax = null
+		try {
+			const searchUrl = new URL(params.pageUrl)
+			if (searchUrl.searchParams.get('price_min')) origPriceMin = Number(searchUrl.searchParams.get('price_min'))
+			if (searchUrl.searchParams.get('price_max')) origPriceMax = Number(searchUrl.searchParams.get('price_max'))
+		} catch(e) {}
+
+		// If no max price set, use a large default so we can still split
+		if (origPriceMax == null) origPriceMax = 50000
+
+		await scrapeRange(params, origPriceMin, origPriceMax)
 
 		try{
 			try{
@@ -261,9 +431,34 @@ module.exports = {
 		while(true)
 		{
 			let url = 'https://www.airbnb.com/rooms/' + listing.id
+			// Append booking params (checkin, checkout, guests) to the listing URL
+			const bp = params.bookingParams || {}
+			if (Object.keys(bp).length) {
+				const qp = new URLSearchParams(bp)
+				url += '?' + qp.toString()
+			}
 			try{
-		    	let doc = await params.db.get('ads').findOneAndUpdate({'url': url},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}}})
+		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id), ['jobs.'+params.jobId]: {$exists: true}},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}, url}})
 		    	if (doc){
+		    		// If cached listing is missing amenities/photos, fetch them now
+		    		if ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1)) {
+		    			try {
+		    				const details = await fetchListingDetails(listing.id, params.bookingParams)
+		    				if (details) {
+		    					const update = {}
+		    					if (details.amenities.length) update.amenities = details.amenities
+		    					if (details.picture_urls.length > 1) update.picture_urls = details.picture_urls
+		    					if (details.amenityIdMap && Object.keys(details.amenityIdMap).length) update.amenityIdMap = details.amenityIdMap
+		    					if (Object.keys(update).length) {
+		    						await params.db.get('ads').update({'airbnbId': String(listing.id)}, {$set: update})
+		    						Helpers.logger.log({print: `Updated details for cached listing: ${listing.id}`, channels:params.jobId+'jobUpdate'})
+		    					}
+		    				}
+		    			} catch(e) {
+		    				Helpers.logger.log({print: `Could not update cached listing ${listing.id}: ${e.message}`, channels:params.jobId+'jobWarning'})
+		    			}
+		    			await Helpers.common.sleep(requestDelay)
+		    		}
 		    		Helpers.logger.log({print:'Loading listing from cache: '+url, channels:params.jobId+'jobUpdate'})
 			    	return
 			    }
@@ -281,11 +476,34 @@ module.exports = {
 		    	params.newAdsFound = true
 				Helpers.logger.log({print: title, channels:params.jobId+'jobUpdate'})
 
+				// Fetch full details (photos + amenities) from listing page
+				let fullPhotos = listing.picture_urls || []
+				let fullAmenities = listing.amenities || []
+				let fullAmenityIdMap = {}
+				try {
+					const details = await fetchListingDetails(listing.id, params.bookingParams)
+					if (details) {
+						if (details.picture_urls.length) fullPhotos = details.picture_urls
+						if (details.amenities.length) fullAmenities = details.amenities
+						if (details.amenityIdMap) fullAmenityIdMap = details.amenityIdMap
+					}
+				} catch(detailErr) {
+					Helpers.logger.log({print: `Could not fetch details for ${listing.id}: ${detailErr.message}`, channels:params.jobId+'jobWarning'})
+				}
+
 			    params.db.get('ads').insert({
 					airbnbId: String(listing.id),
 					price, lat, lon, url, title,
 					categories: [],
 					description: listing.title || '',
+					picture_url: listing.picture_url || '',
+					picture_urls: fullPhotos,
+					bedrooms: listing.bedrooms || 0,
+					bathrooms: listing.bathrooms || 0,
+					beds: listing.beds || 0,
+					person_capacity: listing.person_capacity || 0,
+					amenities: fullAmenities,
+					amenityIdMap: fullAmenityIdMap,
 					'datetime': new Date(),
 					'pageUrl': params.pageUrl,
 					'platform': 'airbnb',

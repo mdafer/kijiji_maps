@@ -8,6 +8,53 @@ function MongoDateFromId(objectId) {
   return new Date(parseInt(objectId.substring(0, 8), 16) * 1000)
 }
 
+var _allAmenities = new Set()
+var _amenityIdMap = {}
+var _savedDisplayAmenities = []
+
+function buildPopupHtml(ad) {
+  var isAirbnb = ad.platform === 'airbnb'
+  var visitLabel = isAirbnb ? 'Visit on Airbnb' : 'Visit on Kijiji'
+  var html = '<div style="max-width:220px">'
+
+  if(isAirbnb && ad.picture_url)
+    html += '<img src="'+ad.picture_url+'" style="max-width:200px;max-height:150px;border-radius:4px;margin-bottom:5px" referrerpolicy="no-referrer">'
+
+  html += '<h4>'+ad.title+'</h4><h4>$'+ad.price+'</h4>'
+
+  if(isAirbnb) {
+    var parts = []
+    if(ad.bedrooms) parts.push(ad.bedrooms + ' bd')
+    if(ad.beds) parts.push(ad.beds + ' beds')
+    if(ad.bathrooms) parts.push(ad.bathrooms + ' ba')
+    if(parts.length) html += '<p style="margin:2px 0;font-size:12px">'+parts.join(' &middot; ')+'</p>'
+
+    if(ad.amenities && ad.amenities.length) {
+      var displayList = getDisplayAmenities()
+      var amenitiesForPopup = displayList.length ? ad.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : ad.amenities
+      if(amenitiesForPopup.length) {
+        html += '<div style="margin:4px 0;display:flex;flex-wrap:wrap;gap:3px">'
+        amenitiesForPopup.forEach(function(a){ html += '<span class="amenity-bubble">'+a+'</span>' })
+        html += '</div>'
+      }
+      ad.amenities.forEach(function(a){ _allAmenities.add(a) })
+      if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+    }
+
+    var pics = ad.picture_urls || []
+    if(pics.length > 1)
+      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdById(\''+ad.airbnbId+'\').picture_urls)">Photos ('+pics.length+')</button>'
+  }
+
+  html += '<h4><a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">'+visitLabel+'</a></h4></div>'
+  return html
+}
+
+function getAdById(airbnbId) {
+  var m = _markers.find(function(mk){ return mk.adData && mk.adData.airbnbId === airbnbId })
+  return m ? m.adData : null
+}
+
 function setMarkersByAds(map, ads, centerLocation = false) {
   if(!ads || !ads.length)
     return
@@ -19,22 +66,22 @@ function setMarkersByAds(map, ads, centerLocation = false) {
       icon.url = "https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png"
     var marker = new google.maps.Marker({
       position: new google.maps.LatLng(ad.lat, ad.lon),
-      icon,
-      map: map,
-      title: ad.address,
-      url: ad.url
+      icon, map: map, title: ad.address, url: ad.url
     });
-
+    marker.adData = ad
     _markers.push(marker)
-    var visitLabel = ad.url.includes('airbnb') ? 'Visit on Airbnb' : 'Visit on Kijiji'
-    bindInfoWindow(marker, map, infowindow, '<h4 style="max-width:200px">'+ad.title+'</h4><h4>$'+ad.price+'</h4><h4><a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">'+visitLabel+'</a></h4>');
+
+    if(ad.amenities) ad.amenities.forEach(function(a){ _allAmenities.add(a) })
+    if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+
+    bindInfoWindow(marker, map, infowindow, ad)
   })
+  updateAmenityBubbles()
 }
 
-var bindInfoWindow = function(marker, map, infowindow, html) {
-
+var bindInfoWindow = function(marker, map, infowindow, ad) {
   function markerClickFunc(){
-    infowindow.setContent(html)
+    infowindow.setContent(buildPopupHtml(ad))
     infowindow.open(map, marker)
     markAsViewed(marker, marker.url)
     google.maps.event.clearListeners(marker, 'click')
@@ -95,4 +142,69 @@ function getMarkersFromAds(ads)
 
 function isTouchScreen(){
   return 'ontouchstart' in window || navigator.maxTouchPoints || (window.DocumentTouch && document instanceof DocumentTouch)
+}
+
+function updateAmenityBubbles(){
+  var andContainer = $('#amenityBubblesAnd')
+  var orContainer = $('#amenityBubblesOr')
+  if(!andContainer.length && !orContainer.length) return
+  var andSelected = (($('#amenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
+  var orSelected = (($('#orAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
+  var sorted = Array.from(_allAmenities).sort()
+  var andHtml = '', orHtml = ''
+  sorted.forEach(function(a){
+    var idTooltip = _amenityIdMap[a] ? ' title="Airbnb ID: '+_amenityIdMap[a]+'"' : ''
+    var isAnd = andSelected.indexOf(a) !== -1
+    var isOr = orSelected.indexOf(a) !== -1
+    if(isAnd)
+      andHtml += '<span class="amenity-filter-bubble active"'+idTooltip+' onclick="toggleAmenityFilter(this,\'and\')" oncontextmenu="moveAmenityFilter(event,this,\'and\')">'+a+'</span>'
+    else if(isOr)
+      orHtml += '<span class="amenity-filter-bubble active amenity-or"'+idTooltip+' onclick="toggleAmenityFilter(this,\'or\')" oncontextmenu="moveAmenityFilter(event,this,\'or\')">'+a+'</span>'
+    else
+      andHtml += '<span class="amenity-filter-bubble"'+idTooltip+' onclick="toggleAmenityFilter(this,\'and\')" oncontextmenu="moveAmenityFilter(event,this,\'and\')">'+a+'</span>'
+  })
+  andContainer.html(andHtml)
+  orContainer.html(orHtml)
+}
+
+function toggleAmenityFilter(el, group){
+  var $el = $(el)
+  if($el.hasClass('active')){
+    $el.removeClass('active')
+    syncAmenityInputs()
+    updateAmenityBubbles()
+  } else {
+    $el.addClass('active')
+    syncAmenityInputs()
+    updateAmenityBubbles()
+  }
+}
+
+function moveAmenityFilter(event, el, fromGroup){
+  event.preventDefault()
+  var name = $(el).text()
+  var toGroup = fromGroup === 'and' ? 'or' : 'and'
+  var fromInput = toGroup === 'or' ? '#amenities' : '#orAmenities'
+  var toInput = toGroup === 'or' ? '#orAmenities' : '#amenities'
+  // Remove from current group
+  var fromList = ($(fromInput).val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
+  fromList = fromList.filter(function(a){ return a !== name })
+  $(fromInput).val(fromList.join(','))
+  // Add to target group
+  var toList = ($(toInput).val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
+  if(toList.indexOf(name) === -1) toList.push(name)
+  $(toInput).val(toList.join(','))
+  updateAmenityBubbles()
+}
+
+function syncAmenityInputs(){
+  var andSelected = [], orSelected = []
+  $('#amenityBubblesAnd .amenity-filter-bubble.active').each(function(){ andSelected.push($(this).text()) })
+  $('#amenityBubblesOr .amenity-filter-bubble.active').each(function(){ orSelected.push($(this).text()) })
+  $('#amenities').val(andSelected.join(','))
+  $('#orAmenities').val(orSelected.join(','))
+}
+
+function getDisplayAmenities(){
+  return _savedDisplayAmenities
 }

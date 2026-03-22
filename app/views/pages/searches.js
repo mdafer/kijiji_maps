@@ -132,6 +132,11 @@ var searchespage= `<!-- Content Header (Page header) -->
               <label>Search Description</label>
               <textarea id ="searchDescriptionBox" name="description" class="form-control" rows="3" placeholder="Description"></textarea>
             </div>
+            <div class="form-group">
+              <label>Display Amenities <small style="color:#888">(shown on listings · none selected = show all)</small></label>
+              <input id="editDisplayAmenities" name="displayAmenities" type="hidden">
+              <div id="editDisplayAmenityBubbles" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
+            </div>
             <input type="submit" value="Submit" style="display:none;">
           </form>
         </div>
@@ -220,7 +225,7 @@ function searchesfunc()
           <td><a target="_blank" href="${filteredJobs[i].url}">${linkLabel}</a></td>
         </tr>
       `)
-      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data)
+      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data).data('displayAmenities', filteredJobs[i].displayAmenities || '')
       $( "#searchesTBody .delSearchBtn" ).last().data('id', filteredJobs[i].id)
       $(".BStooltip").tooltip({ trigger: 'hover' })
     }
@@ -239,9 +244,26 @@ function searchesfunc()
 
     $('.editSearchBtn').on('click', function(event){
       event.preventDefault();
-      $('#searchId').val($(this).data('id'))
+      var jobIdForEdit = $(this).data('id')
+      $('#searchId').val(jobIdForEdit)
       $('#searchNameBox').val($(this).data('name'))
       $('#searchDescriptionBox').val($(this).data('description'))
+      $('#editDisplayAmenities').val($(this).data('displayAmenities') || '')
+      $('#editDisplayAmenityBubbles').html('<small style="color:#999">Loading amenities...</small>')
+      APIgetJobAmenities(jobIdForEdit, function(data){
+        if(!data || !data.amenities || !data.amenities.length) {
+          $('#editDisplayAmenityBubbles').html('<small style="color:#999">No amenities found for this search</small>')
+          return
+        }
+        var selected = ($('#editDisplayAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
+        var html = ''
+        data.amenities.forEach(function(a){
+          var idTooltip = data.amenityIdMap && data.amenityIdMap[a] ? ' title="Airbnb ID: '+data.amenityIdMap[a]+'"' : ''
+          var active = selected.indexOf(a) !== -1
+          html += '<span class="amenity-filter-bubble amenity-display'+(active?' active':'')+'"'+idTooltip+' onclick="toggleEditDisplayAmenity(this)">'+a+'</span>'
+        })
+        $('#editDisplayAmenityBubbles').html(html)
+      })
     })
   })
 
@@ -265,6 +287,13 @@ function searchesfunc()
   })
 
   
+}
+
+function toggleEditDisplayAmenity(el){
+  $(el).toggleClass('active')
+  var selected = []
+  $('#editDisplayAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
+  $('#editDisplayAmenities').val(selected.join(','))
 }
 
 function searchesUnload()

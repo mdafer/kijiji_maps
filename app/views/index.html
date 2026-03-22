@@ -20,8 +20,18 @@
 
   <!-- Google Font -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,300italic,400italic,600italic">
-  <script src="https://maps.googleapis.com/maps/api/js?key=Google-Maps-API-Key-Here&initAutocomplete&libraries=places&v=weekly"></script>
-  <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
+  <script src="/config.js"></script>
+  <script>
+    (function() {
+      window.googleMapsReady = new Promise(function(resolve) {
+        window.__googleMapsCallback = resolve;
+        var s = document.createElement('script');
+        s.src = 'https://maps.googleapis.com/maps/api/js?key=' + APP_CONFIG.GOOGLE_MAPS_KEY + '&libraries=places&v=weekly&callback=__googleMapsCallback';
+        s.async = true;
+        document.head.appendChild(s);
+      });
+    })();
+  </script>
 </head>
 
 <body class="skin-blue sidebar-mini" style="height: auto; min-height: 100% !important;">
@@ -155,6 +165,12 @@
     
 
   </div>
+  <!-- Photo Gallery Overlay -->
+  <div id="photoGalleryOverlay" onclick="if(event.target===this)closePhotoGallery()">
+    <button class="gallery-close" onclick="closePhotoGallery()">&times;</button>
+    <div id="photoGalleryContent"></div>
+  </div>
+
   <!-- ./wrapper -->
 
   <!-- Login Modal-->
@@ -287,6 +303,7 @@
 <script src="pages/main.js"></script>
 <script src="pages/searches.js"></script>
 <script src="pages/map.js"></script>
+<script src="pages/grid.js"></script>
 <script src="pages/causedetail.js"></script>
 <script src="pages/neighbordetail.js"></script>
 

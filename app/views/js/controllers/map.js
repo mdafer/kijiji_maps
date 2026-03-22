@@ -121,8 +121,10 @@ function clearMapMarkers(markers='all', removeFromGlobalMarkers=true)
     markers = _markers
   for(let i=0;i<markers.length;i++)
     markers[i].setMap(null)
-  if(removeFromGlobalMarkers)
+  if(removeFromGlobalMarkers) {
     _markers = _markers.filter( (el)=> {return !markers.find(marker=>marker.url ==el.url)} );
+    if(!_markers.length) { _allAmenities = new Set(); _amenityIdMap = {} }
+  }
   $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
 }
 
@@ -210,6 +212,41 @@ function mapClearInformationWindow()
   APIcheckLatestAds('{"jobId":"Denise"}')
   return true
 }*/
+
+function openPhotoGallery(urls)
+{
+  var html = ''
+  urls.forEach(function(url){
+    html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="toggleGalleryExpand(this)">'
+  })
+  $('#photoGalleryContent').html(html)
+  $('#photoGalleryOverlay').fadeIn(200)
+  $('body').css('overflow','hidden')
+}
+
+function closePhotoGallery()
+{
+  $('#photoGalleryOverlay').fadeOut(200)
+  $('body').css('overflow','')
+}
+
+function toggleGalleryExpand(img)
+{
+  $(img).toggleClass('gallery-expanded')
+}
+
+function clearJobCache()
+{
+  if(!confirm("Are you sure you want to clear all cached listings for this search? This will remove them from the database."))
+    return false
+  APIclearJobAds(JSON.stringify({jobId}), function(result){
+    clearMapMarkers('all')
+    _markers = []
+    $(".resultscount").html('Last Updated: N/A, Number of results: 0')
+    alert('Cleared ' + (result.removed || 0) + ' cached listings.')
+  })
+  return true
+}
 
 function mapResetViewed()
 {

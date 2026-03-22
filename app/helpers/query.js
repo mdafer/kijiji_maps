@@ -16,6 +16,37 @@ module.exports = {
 		if(vars.toPrice)
 			myfilter.$and.push({price:{$lte:vars.toPrice}})
 
+		if(vars.minBedrooms)
+			myfilter.$and.push({bedrooms:{$gte:Number(vars.minBedrooms)}})
+
+		if(vars.minBathrooms)
+			myfilter.$and.push({bathrooms:{$gte:Number(vars.minBathrooms)}})
+
+		if(vars.minBeds)
+			myfilter.$and.push({beds:{$gte:Number(vars.minBeds)}})
+
+		if(vars.minPhotos) {
+			let minP = Number(vars.minPhotos)
+			if(minP > 0)
+				myfilter.$and.push({['picture_urls.'+(minP-1)]: {$exists: true}})
+		}
+
+		if(vars.amenities)
+		{
+			let amenityList = Array.isArray(vars.amenities) ? vars.amenities : vars.amenities.split(',')
+			amenityList = amenityList.map(a => a.trim()).filter(a => a)
+			if(amenityList.length)
+				myfilter.$and.push({amenities:{$all: amenityList.map(a => new RegExp(a, 'i'))}})
+		}
+
+		if(vars.orAmenities)
+		{
+			let orAmenityList = Array.isArray(vars.orAmenities) ? vars.orAmenities : vars.orAmenities.split(',')
+			orAmenityList = orAmenityList.map(a => a.trim()).filter(a => a)
+			if(orAmenityList.length)
+				myfilter.$and.push({$or: orAmenityList.map(a => ({amenities: new RegExp(a, 'i')}))})
+		}
+
 		//{$text: { $search: " house  -female -females -girl -girls -lady -ladies" } }
 		if(vars.searchText)
 		{

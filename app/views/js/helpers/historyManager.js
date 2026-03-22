@@ -68,7 +68,7 @@ function renderpage(params={})
 	mystate = mystate.toLowerCase() || 'main'
 	window['currentState'] = mystate
 
-	if(!(jobId && jobName) && mystate=='map' )
+	if(!(jobId && jobName) && (mystate=='map' || mystate=='grid') )
 	{
 		alert('Please select a search ID first')
 		loadpage('searches', true)
