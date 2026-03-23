@@ -314,7 +314,10 @@ tr td{
     background:#fff;
     border:1px solid #ddd;
     border-radius:8px;
-    min-width:0;
+}
+.grid-row-images-wrap{
+    overflow:hidden;
+    border-radius:0 0 8px 8px;
 }
 .grid-row-header{
     padding:10px 14px;
@@ -357,9 +360,8 @@ tr td{
     border-radius:0 0 8px 8px;
     overflow:hidden;
 }
-.grid-row-item > .grid-row-images:last-child{
+.grid-row-item > .grid-row-images-wrap:last-child{
     border-radius:0 0 8px 8px;
-    overflow:hidden;
 }
 .grid-row-cat{
     border-bottom:1px solid #ddd;
@@ -380,7 +382,6 @@ tr td{
     gap:4px;
     padding:0;
     background:#f5f5f5;
-    max-width:100%;
 }
 .grid-row-img{
     height:220px;

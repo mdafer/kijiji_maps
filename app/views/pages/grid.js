@@ -250,11 +250,11 @@ function buildRowHtml(ad) {
     })
     imagesHtml += '</div>'
   } else {
-    imagesHtml = '<div class="grid-row-images">'
+    imagesHtml = '<div class="grid-row-images-wrap"><div class="grid-row-images">'
     pics.forEach(function(url) {
       imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
     })
-    imagesHtml += '</div>'
+    imagesHtml += '</div></div>'
   }
 
   var amenityHtml = ''
