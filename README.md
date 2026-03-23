@@ -49,16 +49,30 @@ The ads are scraped and cached in a mongodb database.
 
 🔄 **Persistent State** - Your search filters, sorting preferences, and view settings are remembered automatically.
 
-## Setup
-Docker Compose provided, so you just need to:
+## Quick Start (Docker)
 
-1- Setup the .env file in the top directory (example.env is provided, copy it to .env and modify it)
+```bash
+# Clone the repo
+git clone https://github.com/your-username/kijiji-maps.git
+cd kijiji-maps
 
-2- Change the Google Map Key in app/views/index.html
+# Copy and configure environment variables
+cp example.env .env
+# Edit .env — at minimum set your GOOGLE_MAPS_KEY, MongoDB credentials, and JWT secret
 
-3- Change the apiURL in views/js/API/common.js
+# Start everything
+docker compose up -d
+```
 
-4- Provide a Facebook App Id if you want to use Facebook Login
+The app will be available at `http://localhost:8082` (or whatever `LISTENER_PORT` you set in `.env`).
+Mongo Express (DB admin UI) runs on port `8081` by default.
+
+### Configuration
+
+1. **`.env`** — Copy `example.env` to `.env` and fill in the values (Google Maps key, MongoDB credentials, JWT secret, etc.)
+2. **Google Maps Key** — Set `GOOGLE_MAPS_KEY` in `.env`
+3. **API URL** — Update `apiURL` in `app/views/js/API/common.js` if not using the default
+4. **Facebook Login** *(optional)* — Provide a Facebook App Id in `app/views/index.html`
 
 Real-time updates work automatically via WebSocket since frontend is hosted on the same instance as backend.
 

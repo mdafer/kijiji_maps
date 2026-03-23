@@ -33,7 +33,8 @@ var toolbarHtml = `
 
       <button id="favFilterBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Show favorites only" onclick="toggleFavoritesFilter()"><i class="fa fa-heart"></i></button>
 
-      <button type="button" class="btn btn-primary btn-sm BStooltip" title="Filters & Settings" data-toggle="modal" data-target="#filtersModal"><i class="fa fa-sliders"></i></button>
+      <button id="filtersBtn" type="button" class="btn btn-primary btn-sm BStooltip" title="Filters & Settings" data-toggle="modal" data-target="#filtersModal"><i class="fa fa-sliders"></i></button>
+      <button id="clearFiltersBtn" type="button" class="btn btn-warning btn-sm BStooltip" title="Clear all filters" onclick="clearAllFilters()" style="display:none"><i class="fa fa-times"></i> Clear Filters</button>
 
       <button type="button" class="btn btn-success btn-sm BStooltip" rel="tooltip" data-placement="top" title="Reset all ads" onclick="resetJob()"><i class="fa fa-refresh"></i></button>
       <button type="button" class="btn btn-danger btn-sm BStooltip" rel="tooltip" data-placement="top" title="Clear cached listings" onclick="clearJobCache()"><i class="fa fa-trash"></i></button>
@@ -246,6 +247,7 @@ function toggleFavoritesFilter() {
   if(!_favoritesOnly) _favJobIds = []
   saveFavoritesOnly()
   $('#favFilterBtn').toggleClass('btn-primary', _favoritesOnly).toggleClass('btn-default', !_favoritesOnly)
+  updateFilterIndicator()
   // Reload current view with the filter applied
   var state = window.currentState
   if(state === 'map' && typeof getAdsAsync === 'function')
@@ -273,4 +275,6 @@ function setViewMode(mode) {
 
   // Sync favorites filter button state
   $('#favFilterBtn').toggleClass('btn-primary', _favoritesOnly).toggleClass('btn-default', !_favoritesOnly)
+
+  updateFilterIndicator()
 }

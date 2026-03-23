@@ -436,3 +436,49 @@ function clearSavedSettings() {
 	localStorage.removeItem('savedSort')
 	localStorage.removeItem('savedFavoritesOnly')
 }
+
+function hasActiveFilters() {
+	var raw = localStorage.getItem('savedFilters')
+	if(raw) {
+		try {
+			var filters = JSON.parse(raw)
+			for(var i = 0; i < _persistKeys.length; i++) {
+				if(filters[_persistKeys[i]]) return true
+			}
+		} catch(e) {}
+	}
+	if(typeof hasActiveShapeFilter === 'function' && hasActiveShapeFilter()) return true
+	if(_favoritesOnly) return true
+	return false
+}
+
+function updateFilterIndicator() {
+	var active = hasActiveFilters()
+	$('#filtersBtn').toggleClass('btn-primary', !active).toggleClass('filters-active', active)
+	$('#clearFiltersBtn').toggle(active)
+}
+
+function clearAllFilters() {
+	_persistKeys.forEach(function(key) {
+		var el = document.getElementById(key)
+		if(!el) return
+		if(el.type === 'checkbox') el.checked = false
+		else el.value = ''
+	})
+	$('#minPhotosCheck').prop('checked', false)
+	if(typeof clearDrawnShape === 'function') clearDrawnShape(true)
+	_favoritesOnly = false
+	$('#favFilterBtn').removeClass('btn-primary').addClass('btn-default')
+	localStorage.removeItem('savedFilters')
+	localStorage.removeItem('savedShapeGeo')
+	localStorage.removeItem('savedFavoritesOnly')
+	$('.amenity-filter-bubble.active').not('.amenity-display').removeClass('active')
+	if(typeof syncAmenityInputs === 'function') syncAmenityInputs()
+	updateFilterIndicator()
+	if(window.currentState === 'map' && typeof getAdsAsync === 'function')
+		getAdsAsync($('#filtersForm').serialize(), true)
+	else if(window.currentState === 'grid' && typeof loadGridAds === 'function')
+		loadGridAds($('#filtersForm').serialize())
+	else if(typeof getAdsAsync === 'function')
+		getAdsAsync($('#filtersForm').serialize())
+}

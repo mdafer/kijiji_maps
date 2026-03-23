@@ -48,6 +48,7 @@ function gridfunc() {
     event.preventDefault()
     $('#filtersModal').modal('hide')
     saveFilters()
+    updateFilterIndicator()
     loadGridAds($('#filtersForm').serialize())
   })
 

@@ -107,6 +107,15 @@ tr td{
     float: none;
 }
 
+.filters-active{
+    background:#e8891a !important;
+    border-color:#d47a12 !important;
+    color:#fff !important;
+}
+.filters-active:hover,.filters-active:focus{
+    background:#d47a12 !important;
+}
+
 .amenity-bubble{
     display:inline-block;
     background:#e8f4fd;

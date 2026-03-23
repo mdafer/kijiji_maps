@@ -44,6 +44,8 @@ function favoritesfunc() {
   $('#filtersForm').on('submit', function(event) {
     event.preventDefault()
     $('#filtersModal').modal('hide')
+    saveFilters()
+    updateFilterIndicator()
     loadFavAds()
   })
 }

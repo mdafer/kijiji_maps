@@ -343,7 +343,7 @@ function applyShapeFilter(){
   $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ visibleCount + ' (area filtered)')
 }
 
-function clearDrawnShape(){
+function clearDrawnShape(silent){
   if(_drawnShape) {
     _drawnShape.setMap(null)
     _drawnShape = null
@@ -355,6 +355,7 @@ function clearDrawnShape(){
   _markersHiddenByShape = []
   $('#drawAreaBtn').removeClass('btn-primary').addClass('btn-default')
   $('#clearShapeBtn').hide()
+  if(silent) return
   // If on grid view, reload ads without shape filter
   if(window.currentState === 'grid' && typeof loadGridAds === 'function') {
     loadGridAds($('#filtersForm').serialize())

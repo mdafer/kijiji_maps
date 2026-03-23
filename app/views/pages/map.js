@@ -64,6 +64,7 @@ function mapfunc()
     event.preventDefault();
     $('#filtersModal').modal('hide');
     saveFilters()
+    updateFilterIndicator()
     getAdsAsync($('#filtersForm').serialize())
   });
 
