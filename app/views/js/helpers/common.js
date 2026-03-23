@@ -68,7 +68,10 @@ $('#loginForm').on('submit', function(event) {
 
 $('#profileForm').on('submit', function(event) {
 	event.preventDefault();
-	APIupdateProfile($('#profileForm').serializeObject(), (data)=>{
+	var data = JSON.parse($('#profileForm').serializeObject())
+	// Always include fbEmail so it can be cleared
+	if(data.fbEmail === undefined) data.fbEmail = ''
+	APIupdateProfile(JSON.stringify(data), ()=>{
 		$('#profileModal').modal('hide');
 		setTimeout(()=>{renderpage()},100)
 	})
@@ -78,6 +81,8 @@ $('#profileModal').on('show.bs.modal', function(){
 	var bubblesDiv = $('#profileDisplayAmenityBubbles')
 	bubblesDiv.html('<small style="color:#999">Loading amenities...</small>')
 	APIgetProfile(null, function(user){
+		$('#profileFbEmail').val(user.fbEmail || '')
+		$('#profileFbPassword').val('')
 		var savedDA = (user.displayAmenities || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
 		$('#profileDisplayAmenities').val(user.displayAmenities || '')
 		if(!user.jobs || !user.jobs.length) {
@@ -358,7 +363,7 @@ function parseQueryParams(query) {
 }
 
 // --- Persistent settings (localStorage) ---
-var _persistKeys = ['fromPrice','toPrice','fromDate','searchText','searchTitleOnly','minBedrooms','minBathrooms','minBeds','minPhotos','amenities','orAmenities']
+var _persistKeys = ['fromPrice','toPrice','fromDate','availableFrom','availableTo','searchText','searchTitleOnly','minBedrooms','minBathrooms','minBeds','minPhotos','amenities','orAmenities']
 
 function saveFilters() {
 	var filters = {}
@@ -481,4 +486,58 @@ function clearAllFilters() {
 		loadGridAds($('#filtersForm').serialize())
 	else if(typeof getAdsAsync === 'function')
 		getAdsAsync($('#filtersForm').serialize())
+}
+
+// --- Shared modal helpers ---
+
+/**
+ * Show a reusable confirm modal.
+ * @param {string} title
+ * @param {string} message  (HTML allowed)
+ * @param {function} onConfirm  called when user confirms
+ * @param {object} [opts]   { confirmLabel, confirmClass, cancelLabel }
+ */
+function showConfirmModal(title, message, onConfirm, opts) {
+	opts = opts || {}
+	var confirmLabel = opts.confirmLabel || 'Confirm'
+	var confirmClass = opts.confirmClass || 'btn-primary'
+	var cancelLabel = opts.cancelLabel || 'Cancel'
+	$('#sharedConfirmModalTitle').text(title)
+	$('#sharedConfirmModalBody').html(message)
+	$('#sharedConfirmModalBtn')
+		.attr('class', 'btn ' + confirmClass)
+		.text(confirmLabel)
+		.off('click')
+		.on('click', function() {
+			$('#sharedConfirmModal').modal('hide')
+			if(typeof onConfirm === 'function') onConfirm()
+		})
+	$('#sharedConfirmModal').modal('show')
+}
+
+/**
+ * Show a simple alert/info modal.
+ * @param {string} title
+ * @param {string} message  (HTML allowed)
+ */
+function showAlertModal(title, message) {
+	$('#sharedAlertModalTitle').text(title)
+	$('#sharedAlertModalBody').html(message)
+	$('#sharedAlertModal').modal('show')
+}
+
+/**
+ * Show the draw-shape selection modal.
+ * @param {function} onSelect  called with the chosen google.maps.drawing.OverlayType
+ */
+function showDrawShapeModal(onSelect) {
+	$('#drawShapeModal').modal('show')
+	$('#drawShapeCircleBtn').off('click').on('click', function() {
+		$('#drawShapeModal').modal('hide')
+		if(typeof onSelect === 'function') onSelect(google.maps.drawing.OverlayType.CIRCLE)
+	})
+	$('#drawShapePolygonBtn').off('click').on('click', function() {
+		$('#drawShapeModal').modal('hide')
+		if(typeof onSelect === 'function') onSelect(google.maps.drawing.OverlayType.POLYGON)
+	})
 }

@@ -64,64 +64,100 @@ var toolbarHtml = `
 <div id="filtersModal" class="modal fade" role="dialog" style="display:none">
   <div class="modal-dialog">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header filters-modal-header">
         <button type="button" class="close" data-dismiss="modal">&times;</button>
-        <h4 class="modal-title">Filters & Settings</h4>
+        <h4 class="modal-title"><i class="fa fa-sliders"></i> Filters</h4>
       </div>
-      <div class="modal-body">
-        <div class="box-body">
-          <form role="form" id="filtersForm" data-toggle="validator">
-            <input id="filterJobId" name="jobId" type="hidden">
-            <div class="form-group">
-              <label>Price</label>
-              <input id="fromPrice" name="fromPrice" type="text" placeholder="Min">
-              <input id="toPrice" name="toPrice" type="text" placeholder="Max">
+      <div class="modal-body filters-modal-body">
+        <form role="form" id="filtersForm" data-toggle="validator">
+          <input id="filterJobId" name="jobId" type="hidden">
+
+          <!-- Price -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-dollar"></i> Price Range</label>
+            <div class="filter-row">
+              <input id="fromPrice" name="fromPrice" type="number" min="0" class="filter-input" placeholder="Min">
+              <span class="filter-separator">&ndash;</span>
+              <input id="toPrice" name="toPrice" type="number" min="0" class="filter-input" placeholder="Max">
             </div>
-            <div class="form-group">
-              <label>Oldest Date</label>
-              <input id="fromDate" name="fromDate" type="date">
+          </div>
+
+          <!-- Listing Date -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-calendar"></i> Oldest Listing Date</label>
+            <input id="fromDate" name="fromDate" type="date" class="filter-input filter-input-full">
+          </div>
+
+          <!-- Availability -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-calendar-check-o"></i> Available Between <small class="filter-hint">(Airbnb only)</small></label>
+            <div class="filter-row">
+              <input id="availableFrom" name="availableFrom" type="date" class="filter-input" placeholder="From">
+              <span class="filter-separator">&ndash;</span>
+              <input id="availableTo" name="availableTo" type="date" class="filter-input" placeholder="To">
             </div>
-            <div class="form-group">
-              <label>Search text</label>
-              <input id="searchText" name="searchText" type="text" placeholder="" value="">
+          </div>
+
+          <!-- Search -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-search"></i> Search Text</label>
+            <input id="searchText" name="searchText" type="text" class="filter-input filter-input-full" placeholder="Keywords, -exclude, &quot;exact phrase&quot;" value="">
+            <label class="filter-checkbox-label">
               <input type="checkbox" id="searchTitleOnly" name="searchTitleOnly" value="true">
-              <label for="searchTitleOnly">Search Title Only</label>
+              Title only
+            </label>
+          </div>
+
+          <!-- Rooms -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-bed"></i> Rooms &amp; Beds</label>
+            <div class="filter-row filter-row-thirds">
+              <div class="filter-field">
+                <span class="filter-field-label">Bedrooms</span>
+                <input id="minBedrooms" name="minBedrooms" type="number" min="0" class="filter-input" placeholder="Any">
+              </div>
+              <div class="filter-field">
+                <span class="filter-field-label">Bathrooms</span>
+                <input id="minBathrooms" name="minBathrooms" type="number" min="0" class="filter-input" placeholder="Any">
+              </div>
+              <div class="filter-field">
+                <span class="filter-field-label">Beds</span>
+                <input id="minBeds" name="minBeds" type="number" min="0" class="filter-input" placeholder="Any">
+              </div>
             </div>
-            <div class="form-group">
-              <label>Min Bedrooms</label>
-              <input id="minBedrooms" name="minBedrooms" type="number" min="0" placeholder="Any" style="width:70px">
-              <label style="margin-left:15px">Min Bathrooms</label>
-              <input id="minBathrooms" name="minBathrooms" type="number" min="0" placeholder="Any" style="width:70px">
-            </div>
-            <div class="form-group">
-              <label>Min Beds</label>
-              <input id="minBeds" name="minBeds" type="number" min="0" placeholder="Any" style="width:70px">
-            </div>
-            <div class="form-group">
+          </div>
+
+          <!-- Photos -->
+          <div class="filter-section">
+            <label class="filter-checkbox-label">
               <input type="checkbox" id="minPhotosCheck" value="2" onchange="$('#minPhotos').val(this.checked?'2':'')">
-              <label for="minPhotosCheck">Hide listings with 1 or no photos</label>
-              <input id="minPhotos" name="minPhotos" type="hidden">
-            </div>
-            <div class="form-group">
-              <input id="amenitySearch" type="text" class="form-control input-sm" placeholder="Search amenities..." oninput="updateAmenityBubbles()" style="margin-bottom:8px">
-            </div>
-            <div class="form-group">
-              <label>AND Amenities <small style="color:#888">(all must match)</small></label>
-              <input id="amenities" name="amenities" type="hidden">
-              <div id="amenityBubblesAnd" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
-            </div>
-            <div class="form-group">
-              <label>OR Amenities <small style="color:#888">(at least one must match · right-click to move)</small></label>
-              <input id="orAmenities" name="orAmenities" type="hidden">
-              <div id="amenityBubblesOr" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
-            </div>
-            <input type="submit" value="Submit" style="display:none;">
-          </form>
-        </div>
+              <i class="fa fa-camera"></i> Hide listings with 1 or no photos
+            </label>
+            <input id="minPhotos" name="minPhotos" type="hidden">
+          </div>
+
+          <!-- Amenities -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-list"></i> Amenities</label>
+            <input id="amenitySearch" type="text" class="filter-input filter-input-full" placeholder="Search amenities..." oninput="updateAmenityBubbles()">
+          </div>
+          <div class="filter-section filter-section-compact">
+            <label class="filter-sublabel">AND <small class="filter-hint">(all must match)</small></label>
+            <input id="amenities" name="amenities" type="hidden">
+            <div id="amenityBubblesAnd" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px"></div>
+          </div>
+          <div class="filter-section filter-section-compact">
+            <label class="filter-sublabel">OR <small class="filter-hint">(at least one · right-click to move)</small></label>
+            <input id="orAmenities" name="orAmenities" type="hidden">
+            <div id="amenityBubblesOr" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px"></div>
+          </div>
+
+          <input type="submit" value="Submit" style="display:none;">
+        </form>
       </div>
-      <div class="modal-footer">
-        <div class="pull-left"><button type="button" class="btn btn-default" data-dismiss="modal">Close</button></div>
-        <div class="pull-right"><button type="button" class="btn btn-primary" onclick="$('#filtersForm').submit();">Filter</button></div>
+      <div class="modal-footer filters-modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" onclick="$('#filtersForm').submit();"><i class="fa fa-check"></i> Apply Filters</button>
       </div>
     </div>
   </div>
@@ -169,6 +205,17 @@ function addInfoRow(row)
 
 var _socketJobId = null
 
+function formatElapsed(ms) {
+  if (!ms) return '0s'
+  var totalSec = Math.floor(ms / 1000)
+  var h = Math.floor(totalSec / 3600)
+  var m = Math.floor((totalSec % 3600) / 60)
+  var s = totalSec % 60
+  if (h > 0) return h + 'h ' + m + 'm ' + s + 's'
+  if (m > 0) return m + 'm ' + s + 's'
+  return s + 's'
+}
+
 function _handleSocketMessage(obj) {
   console.log('[socket] _handleSocketMessage', {_socketJobId, channel: obj&&obj.channel, obj})
   if(!_socketJobId || !obj || !obj.channel) return
@@ -179,19 +226,45 @@ function _handleSocketMessage(obj) {
     switch(obj.command) {
       case 'procPageNumber':
         addInfoRow({date:obj.date, print:'Processing page: '+obj.print})
-        $('#informationStatus').text("Processing Page: "+obj.print)
+        var status = "Processing Page: " + obj.print
+        var extra = ""
+        if (obj.params) {
+          if (obj.params.foldIndex) {
+            status = "Fold " + obj.params.foldIndex + (obj.params.totalFolds ? "/" + obj.params.totalFolds : "") + 
+                     " · Page " + (obj.params.foldPageNumber || obj.print)
+            if (obj.params.foldListingsFound !== undefined) {
+              status += " · Found: " + obj.params.foldListingsFound
+            }
+          }
+          if (obj.params.startTime) {
+            extra = "Elapsed: " + formatElapsed(Date.now() - obj.params.startTime) + " · Total Pages: " + obj.print
+            if (obj.params.totalListingsFound !== undefined) {
+              extra += " · Total Found: " + obj.params.totalListingsFound
+            }
+          }
+        }
+        $('#informationStatus').text(status)
+        if (extra) $('#informationStatus2').text(extra)
       break;
       case 'donePageNumber':
         addInfoRow({date:obj.date, print:'Done processing page: '+obj.print})
-        if(obj.params && obj.params.refresh && typeof getAdsAsync === 'function')
+        if (obj.params && obj.params.refresh && typeof getAdsAsync === 'function')
           getAdsAsync($('#filtersForm').serialize())
+        if (obj.params && obj.params.startTime) {
+           var extraDone = "Elapsed: " + formatElapsed(Date.now() - obj.params.startTime) + " · Total Pages: " + obj.print
+           if (obj.params.totalListingsFound !== undefined) extraDone += " · Total Found: " + obj.params.totalListingsFound
+           $('#informationStatus2').text(extraDone)
+        }
       break;
       case 'doneProc':
         if(typeof getAdsAsync === 'function') getAdsAsync($('#filtersForm').serialize())
         if(typeof loadGridAds === 'function' && window.currentState === 'grid') loadGridAds($('#filtersForm').serialize())
-        addInfoRow({date:obj.date, print:'All ads have been refreshed and expired ads removed! Pages processed: '+obj.print})
-        $('#informationStatus').text("Ads refreshed! Total pages processed: "+obj.print)
-        $('#informationStatus2').text("All expired ads have been removed!")
+        var totalFoundMsg = obj.params && obj.params.totalListingsFound !== undefined ? " · Found " + obj.params.totalListingsFound + " ads" : ""
+        addInfoRow({date:obj.date, print:'All ads have been refreshed and expired ads removed! Pages: '+obj.print + totalFoundMsg})
+        $('#informationStatus').text("Ads refreshed! Total pages processed: "+obj.print + totalFoundMsg)
+        var totalExtra = ""
+        if (obj.params && obj.params.startTime) totalExtra = "Total Time: " + formatElapsed(Date.now() - obj.params.startTime) + " · "
+        $('#informationStatus2').text(totalExtra + "All expired ads have been removed!")
       break;
       case 'removeUrlMarker':
         addInfoRow({date:obj.date, print:'Removing expired ad!'})

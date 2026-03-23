@@ -1,5 +1,16 @@
 async function APIgetAds(params, callback=null)
 {
+	// Inject multi-search job IDs if viewing selected searches
+	if(jobId === 'multi') {
+		var multiIds = JSON.parse(localStorage.getItem('multiJobIds') || '[]')
+		if(multiIds.length) {
+			var idsStr = multiIds.join(',')
+			if(typeof params === 'string')
+				params += '&jobIds=' + encodeURIComponent(idsStr)
+			else if(typeof params === 'object')
+				params = Object.assign({}, params, {jobIds: idsStr})
+		}
+	}
 	// Inject favorites filter if active
 	if(_favoritesOnly) {
 		var extra = {favoritesOnly: 'true'}

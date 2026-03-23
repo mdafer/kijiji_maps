@@ -7,6 +7,7 @@ var searchespage= `<!-- Content Header (Page header) -->
         My Searches
         <small></small>
       </h1>
+      <button id="viewSelectedBtn" type="button" class="btn btn-info" onclick="viewSelectedSearches()" disabled><i class="fa fa-eye"></i> View Selected</button>
       <button type="button" class="btn btn-success" data-toggle="modal" data-target="#newSearchModal">New Search</button>
     </section>
 
@@ -29,6 +30,7 @@ var searchespage= `<!-- Content Header (Page header) -->
                 <table class="table no-margin">
                   <thead>
                   <tr>
+                    <th><input type="checkbox" id="selectAllSearches" title="Select all"></th>
                     <th>Actions</th>
                     <th>Platform</th>
                     <th>Status</th>
@@ -73,6 +75,7 @@ var searchespage= `<!-- Content Header (Page header) -->
               <select id="newSearchPlatform" name="platform" class="form-control" required>
                 <option value="kijiji">Kijiji</option>
                 <option value="airbnb">Airbnb</option>
+                <option value="facebook">Facebook Marketplace</option>
               </select>
             </div>
             <div class="form-group">
@@ -84,6 +87,11 @@ var searchespage= `<!-- Content Header (Page header) -->
               <input name="url" type="text" class="form-control" id="newSearchUrlInput" placeholder="https://www.kijiji.ca/..." required>
             </div>
             
+
+            <div class="form-group" id="newSearchFoldsGroup" style="display:none">
+              <label>Price Folds <small class="text-muted">(split search by price into N sub-ranges for more results)</small></label>
+              <input name="priceFolds" type="number" class="form-control" id="newSearchFolds" min="2" max="10" placeholder="e.g. 3 (optional, 2-10)">
+            </div>
 
             <!-- textarea -->
             <div class="form-group">
@@ -167,9 +175,15 @@ function searchesfunc()
     if(plat === 'airbnb') {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.airbnb.ca/s/Toronto/...')
       $('#newSearchUrlLabel').text('Airbnb Search Link')
+      $('#newSearchFoldsGroup').show()
+    } else if(plat === 'facebook') {
+      $('#newSearchUrlInput').attr('placeholder', 'https://www.facebook.com/marketplace/toronto/propertyrentals?...')
+      $('#newSearchUrlLabel').text('Facebook Marketplace Search Link')
+      $('#newSearchFoldsGroup').show()
     } else {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.kijiji.ca/...')
       $('#newSearchUrlLabel').text('Kijiji First Page Link (after you click search)')
+      $('#newSearchFoldsGroup').show()
     }
   }).trigger('change')
 
@@ -206,10 +220,13 @@ function searchesfunc()
       let platform = filteredJobs[i].platform || 'kijiji'
       let platformLabel = platform === 'airbnb'
         ? '<td><span class="label label-danger">Airbnb</span></td>'
+        : platform === 'facebook'
+        ? '<td><span class="label label-primary">Facebook</span></td>'
         : '<td><span class="label label-info">Kijiji</span></td>'
-      let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : 'Kijiji Link'
+      let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : platform === 'facebook' ? 'FB Marketplace Link' : 'Kijiji Link'
       $('#searchesTBody').append(`
         <tr>
+          <td><input type="checkbox" class="searchSelectCb" data-jobid="${filteredJobs[i].id}" data-jobname="${filteredJobs[i].name}"></td>
           <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
           <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
           </td>
@@ -227,14 +244,18 @@ function searchesfunc()
 
     $('.delSearchBtn').on('click', function(event){
       event.preventDefault();
-      let retVal = confirm("Are you sure you want to delete this job?")
-      if(!retVal)
-        return false
-      APIdeleteJob(JSON.stringify({id:$(this).data('id')}), ()=>{
-        localStorage.removeItem('visitedUrls'+jobId)
-        setTimeout(()=>{renderpage('searches')},300)
-      })
-      //return true
+      var delId = $(this).data('id')
+      showConfirmModal(
+        'Delete Search',
+        'Are you sure you want to delete this search? This cannot be undone.',
+        function() {
+          APIdeleteJob(JSON.stringify({id: delId}), ()=>{
+            localStorage.removeItem('visitedUrls'+jobId)
+            setTimeout(()=>{renderpage('searches')},300)
+          })
+        },
+        { confirmLabel: 'Delete', confirmClass: 'btn-danger' }
+      )
     })
 
     $('.editSearchBtn').on('click', function(event){
@@ -243,6 +264,18 @@ function searchesfunc()
       $('#searchId').val(jobIdForEdit)
       $('#searchNameBox').val($(this).data('name'))
       $('#searchDescriptionBox').val($(this).data('description'))
+    })
+
+    // Select-all checkbox
+    $('#selectAllSearches').on('change', function(){
+      $('.searchSelectCb').prop('checked', this.checked)
+      updateViewSelectedBtn()
+    })
+    // Individual checkbox updates button state
+    $(document).on('change', '.searchSelectCb', function(){
+      var allChecked = $('.searchSelectCb').length === $('.searchSelectCb:checked').length
+      $('#selectAllSearches').prop('checked', allChecked)
+      updateViewSelectedBtn()
     })
   })
 
@@ -256,7 +289,10 @@ function searchesfunc()
 
   $('#newSearchForm').on('submit', function(event) {
     event.preventDefault();
-    APIaddNewSearch($('#newSearchForm').serializeObject(), ()=>{$('#newSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
+    var formData = $('#newSearchForm').serializeObject()
+    if(!formData.priceFolds || formData.priceFolds < 2) delete formData.priceFolds
+    else formData.priceFolds = Number(formData.priceFolds)
+    APIaddNewSearch(formData, ()=>{$('#newSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
   })
   $('#editSearchForm').on('submit', function(event) {
     event.preventDefault();
@@ -266,11 +302,43 @@ function searchesfunc()
   
 }
 
+function updateViewSelectedBtn() {
+  var count = $('.searchSelectCb:checked').length
+  $('#viewSelectedBtn').prop('disabled', count === 0)
+  if(count > 0)
+    $('#viewSelectedBtn').html('<i class="fa fa-eye"></i> View Selected (' + count + ')')
+  else
+    $('#viewSelectedBtn').html('<i class="fa fa-eye"></i> View Selected')
+}
+
+function viewSelectedSearches() {
+  var selected = []
+  var names = []
+  $('.searchSelectCb:checked').each(function(){
+    selected.push($(this).data('jobid'))
+    names.push($(this).data('jobname'))
+  })
+  if(!selected.length) return
+  // Single search: navigate directly to it
+  if(selected.length === 1) {
+    window.location.hash = 'grid?jobId=' + selected[0] + '&jobName=' + encodeURIComponent(names[0])
+    renderpage()
+    return
+  }
+  // Multiple: use jobId=multi and pass IDs via localStorage
+  localStorage.setItem('multiJobIds', JSON.stringify(selected))
+  var label = selected.length + ' Searches'
+  window.location.hash = 'grid?jobId=multi&jobName=' + encodeURIComponent(label)
+  renderpage()
+}
+
 function searchesUnload()
 {
   $('#newSearchForm').off('submit')
   $('#editSearchForm').off('submit')
   $('#newSearchPlatform').off('change')
+  $(document).off('change', '.searchSelectCb')
+  $('#selectAllSearches').off('change')
   if(window._searchesSocketHandler) {
     socket.off('all', window._searchesSocketHandler)
     window._searchesSocketHandler = null

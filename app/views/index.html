@@ -128,6 +128,7 @@
             <ul class="treeview-menu">
               <li><a href="#searches" onclick='return loadpage("searches?platform=kijiji", true)'><i class="fa fa-circle-o text-green"></i> Kijiji</a></li>
               <li><a href="#searches" onclick='return loadpage("searches?platform=airbnb", true)'><i class="fa fa-circle-o text-red"></i> Airbnb</a></li>
+              <li><a href="#searches" onclick='return loadpage("searches?platform=facebook", true)'><i class="fa fa-circle-o text-blue"></i> Facebook</a></li>
             </ul>
           </li>
           <li><a href="#map" onclick='loadpage("map")'><i class="fa fa-map text-green"></i> <span>Map</span></a></li>
@@ -154,7 +155,7 @@
       <div class="pull-right hidden-xs">
         <b>Version</b> 0.0.1
       </div>
-      <strong>Copyright © 2020</strong> All rights
+      <strong>Copyright © 2026</strong> All rights
       reserved.
     </footer>
 
@@ -173,6 +174,14 @@
   </div>
   <div id="photoGalleryZoom" onclick="closePhotoZoom()">
     <img id="photoGalleryZoomImg" src="">
+  </div>
+  <!-- Availability Calendar Overlay -->
+  <div id="availabilityOverlay" onclick="if(event.target===this)closeAvailabilityCalendar()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:10005;overflow-y:auto;padding:20px;">
+    <button class="gallery-close" onclick="closeAvailabilityCalendar()" style="position:fixed;top:12px;right:20px;color:#fff;font-size:32px;cursor:pointer;z-index:10006;background:rgba(0,0,0,0.5);border:none;border-radius:50%;width:40px;height:40px;line-height:36px;text-align:center;">&times;</button>
+    <div id="availabilityContent" style="background:white;padding:20px;border-radius:8px;max-width:960px;margin:40px auto;position:relative;">
+      <h3 id="availabilityTitle" style="margin-top:0;margin-bottom:20px;border-bottom:1px solid #eee;padding-bottom:10px;">Availability Calendar</h3>
+      <div id="availabilityCalendarGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:20px;"></div>
+    </div>
   </div>
 
   <!-- Listing Map Popup Modal -->
@@ -278,6 +287,17 @@
                 <label>Change Password</label>
                 <input name = "password" type="password" class="form-control" placeholder="Password">
               </div>
+              <hr style="border-top:1px solid #ddd">
+              <h4 style="margin-bottom:12px"><i class="fa fa-facebook-square text-blue"></i> Facebook Marketplace Login</h4>
+              <div class="form-group">
+                <label>Facebook Email</label>
+                <input id="profileFbEmail" name="fbEmail" type="text" class="form-control" placeholder="Facebook email or phone" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label>Facebook Password <small style="color:#888">(stored encrypted on server)</small></label>
+                <input id="profileFbPassword" name="fbPassword" type="password" class="form-control" placeholder="Leave blank to keep current" autocomplete="new-password">
+              </div>
+              <hr style="border-top:1px solid #ddd">
               <div class="form-group">
                 <label>Display Amenities <small style="color:#888">(shown on listings · none selected = show all)</small></label>
                 <input id="profileDisplayAmenities" name="displayAmenities" type="hidden">
@@ -303,6 +323,74 @@
     </div>
   </div>
   <!-- Modal END-->
+
+  <!-- Shared Confirm Modal -->
+  <div id="sharedConfirmModal" class="modal fade" role="dialog" style="display:none">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal">&times;</button>
+          <h4 id="sharedConfirmModalTitle" class="modal-title">Confirm</h4>
+        </div>
+        <div class="modal-body">
+          <p id="sharedConfirmModalBody"></p>
+        </div>
+        <div class="modal-footer">
+          <div class="pull-left"><button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button></div>
+          <div class="pull-right"><button id="sharedConfirmModalBtn" type="button" class="btn btn-primary">Confirm</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Alert Modal -->
+  <div id="sharedAlertModal" class="modal fade" role="dialog" style="display:none">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal">&times;</button>
+          <h4 id="sharedAlertModalTitle" class="modal-title">Notice</h4>
+        </div>
+        <div class="modal-body">
+          <p id="sharedAlertModalBody"></p>
+        </div>
+        <div class="modal-footer">
+          <div class="pull-right"><button type="button" class="btn btn-primary" data-dismiss="modal">OK</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Draw Shape Modal -->
+  <div id="drawShapeModal" class="modal fade" role="dialog" style="display:none">
+    <div class="modal-dialog" style="max-width:420px">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal">&times;</button>
+          <h4 class="modal-title"><i class="fa fa-pencil" style="color:#2196F3;margin-right:8px"></i>Draw Area Filter</h4>
+        </div>
+        <div class="modal-body" style="text-align:center;padding:24px 20px 16px">
+          <p style="margin-bottom:20px;color:#555">Choose the shape you want to draw on the map to filter listings by area.</p>
+          <div style="display:flex;gap:16px;justify-content:center">
+            <button id="drawShapeCircleBtn" class="btn btn-default draw-shape-btn" style="flex:1;padding:18px 8px;border-radius:10px;border:2px solid #d0d0d0">
+              <div style="font-size:32px;margin-bottom:6px">&#9711;</div>
+              <div style="font-weight:600;font-size:14px">Circle</div>
+              <div style="font-size:11px;color:#888;margin-top:3px">Click center, drag radius</div>
+            </button>
+            <button id="drawShapePolygonBtn" class="btn btn-default draw-shape-btn" style="flex:1;padding:18px 8px;border-radius:10px;border:2px solid #d0d0d0">
+              <div style="font-size:32px;margin-bottom:6px">&#11039;</div>
+              <div style="font-weight:600;font-size:14px">Polygon</div>
+              <div style="font-size:11px;color:#888;margin-top:3px">Click points, close to finish</div>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="pull-left"><button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body></html>
 <!-- REQUIRED JS SCRIPTS -->
 
@@ -351,26 +439,48 @@
   // Manual paste flow — when backend is soft-blocked, show inline UI in information modal
   socket.on('needManualResponse', function(data) {
     window._pendingManualRequestId = data.requestId
-    // Open the information modal if not already open
-    $('#informationModal').modal('show')
-    // Build the inline paste UI as an info row
-    var row = '<div id="manualPasteRow" class="row" style="background:#fff3cd;padding:8px;margin:4px 0;border-radius:4px">' +
-      '<div class="col-xs-12">' +
-        '<strong style="color:#856404">Soft-blocked by Airbnb</strong> — ' +
-        '<a href="' + data.url + '" target="_blank" style="word-break:break-all">Open this URL in your browser</a>, ' +
-        'copy the full JSON response, and paste it below:' +
-        '<div style="margin-top:6px;display:flex;gap:6px">' +
-          '<textarea id="manualPasteInput" rows="3" class="form-control" placeholder="Paste JSON response here..." style="flex:1;font-size:12px;font-family:monospace"></textarea>' +
-        '</div>' +
-        '<div style="margin-top:6px">' +
-          '<button class="btn btn-primary btn-sm" onclick="submitManualPaste()">Submit</button> ' +
-          '<button class="btn btn-default btn-sm" onclick="skipManualPaste()">Skip</button> ' +
-          '<span id="manualPasteError" style="color:#a94442;margin-left:8px"></span>' +
-        '</div>' +
-      '</div>' +
-    '</div>'
-    $('#messages').append(row)
-    $("#messages").scrollTop($("#messages")[0].scrollHeight)
+    // Ensure the info modal is visible
+    if (!$('#informationModal').hasClass('in')) {
+      $('#informationModal').modal('show')
+    }
+
+    // Since the modal content might be rendered dynamically or on-demand,
+    // wait until the #messages container is available
+    var retryCount = 0
+    var appendInterval = setInterval(function() {
+      var $messages = $('#messages')
+      if ($messages.length > 0) {
+        clearInterval(appendInterval)
+        // Check if already present to avoid duplicates
+        if ($('#manualPasteRow').length > 0) return
+
+        // Build the inline paste UI as an info row
+        var row = '<div id="manualPasteRow" class="row" style="background:#fff3cd;padding:8px;margin:10px 0;border-radius:4px;border:1px solid #ffeeba;color:#856404">' +
+          '<div class="col-xs-12">' +
+            '<div style="margin-bottom:8px"><strong><i class="fa fa-warning"></i> Soft-blocked by Airbnb</strong></div>' +
+            'Airbnb is hiding listings. To continue, <a href="' + data.url + '" target="_blank" style="text-decoration:underline;font-weight:bold">click here to open the search in a new tab</a>, ' +
+            'copy everything (Ctrl+A, Ctrl+C), and paste it below:' +
+            '<div style="margin-top:8px;display:flex;gap:6px">' +
+              '<textarea id="manualPasteInput" rows="4" class="form-control" placeholder="Paste the full page source or JSON response here..." style="flex:1;font-size:12px;font-family:monospace;border:1px solid #ffeeba"></textarea>' +
+            '</div>' +
+            '<div style="margin-top:8px">' +
+              '<button class="btn btn-primary btn-sm" onclick="submitManualPaste()">Submit Response</button> ' +
+              '<button class="btn btn-success btn-sm" onclick="confirmEmptyPaste()">Confirm Empty</button> ' +
+              '<button class="btn btn-default btn-sm" onclick="skipFoldPaste()">Retry Later</button> ' +
+              '<span id="manualPasteError" style="color:#a94442;margin-left:8px;font-weight:600"></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+        $messages.append(row)
+        $messages.scrollTop($messages[0].scrollHeight)
+        // Focus the input
+        $('#manualPasteInput').focus()
+      } else if (retryCount++ > 20) {
+        // Stop after 2 seconds if #messages still missing
+        clearInterval(appendInterval)
+        console.error('Failed to find #messages element for manual paste UI')
+      }
+    }, 100)
   })
 
   window.submitManualPaste = function() {
@@ -381,7 +491,12 @@
     $('#manualPasteRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#3c763d"><strong>Manual response submitted</strong></div></div>')
   }
 
-  window.skipManualPaste = function() {
+  window.confirmEmptyPaste = function() {
+    socket.emit('manualResponse', { requestId: window._pendingManualRequestId, json: JSON.stringify({ manualEmpty: true }) })
+    $('#manualPasteRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#3c763d"><strong>Marked as empty range</strong></div></div>')
+  }
+
+  window.skipFoldPaste = function() {
     socket.emit('manualResponseError', { requestId: window._pendingManualRequestId, error: 'User skipped' })
     $('#manualPasteRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#856404"><strong>Skipped — will retry after delay</strong></div></div>')
   }

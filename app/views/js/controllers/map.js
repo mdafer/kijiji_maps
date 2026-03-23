@@ -174,25 +174,69 @@ function updateViewedList(e) {
 
 function rebuildViewedList()
 {
-  let retVal = confirm("Are you sure you want to re-index viewed ads list for this search?")
-  if(!retVal)
-    return false
-  if(!visitedUrls || !visitedUrls.length)
-    return
-  let uniqueList = visitedUrls.filter(LocalUrl => {return _markers.some(marker => marker.url == LocalUrl)})
-  localStorage.setItem('visitedUrls'+jobId, JSON.stringify(uniqueList))
-  return true
+  showConfirmModal(
+    'Re-index Viewed Ads',
+    'Are you sure you want to re-index the viewed ads list for this search?',
+    function() {
+      if(!visitedUrls || !visitedUrls.length) return
+      let uniqueList = visitedUrls.filter(LocalUrl => {return _markers.some(marker => marker.url == LocalUrl)})
+      localStorage.setItem('visitedUrls'+jobId, JSON.stringify(uniqueList))
+    },
+    { confirmLabel: 'Re-index', confirmClass: 'btn-warning' }
+  )
 }
 
 function resetJob()
 {
-  var platformName = (urlParams.platform === 'airbnb') ? 'Airbnb' : 'Kijiji'
-  let retVal = confirm("Are you sure you want to update ads of this search from " + platformName + "?")
-  if(!retVal)
-    return false
-  $('#informationModal').modal('show')
-  APIresetJob(JSON.stringify({jobId}))
-  return true
+  var platformName = (urlParams.platform === 'airbnb') ? 'Airbnb' : (urlParams.platform === 'facebook') ? 'Facebook' : 'Kijiji'
+  var showFolds = true
+  $('#refreshListingsModal').remove()
+  var foldsHtml = showFolds ? `
+    <div class="form-group" style="margin-top:14px">
+      <label style="font-weight:600">Price Folds <small class="text-muted">(split by price into N sub-ranges, 2–10, optional)</small></label>
+      <input id="refreshFoldsInput" type="number" min="2" max="10" class="form-control" placeholder="Leave empty for no splitting">
+    </div>` : ''
+  var modalHtml = `
+  <div id="refreshListingsModal" class="modal fade" role="dialog" style="display:none">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal">&times;</button>
+          <h4 class="modal-title"><i class="fa fa-refresh" style="color:#5cb85c;margin-right:7px"></i>Refresh Listings</h4>
+        </div>
+        <div class="modal-body">
+          <p>Update listings for this search from <strong>${platformName}</strong>?</p>
+          ${foldsHtml}
+          <div id="refreshFoldsError" style="color:#a94442;margin-top:6px;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <div class="pull-left"><button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button></div>
+          <div class="pull-right"><button type="button" id="refreshListingsConfirmBtn" class="btn btn-success"><i class="fa fa-refresh"></i> Refresh</button></div>
+        </div>
+      </div>
+    </div>
+  </div>`
+  $('body').append(modalHtml)
+  $('#refreshListingsConfirmBtn').on('click', function() {
+    var priceFolds = null
+    if(showFolds) {
+      var val = $('#refreshFoldsInput').val().trim()
+      if(val !== '') {
+        priceFolds = Number(val)
+        if(isNaN(priceFolds) || priceFolds < 2 || priceFolds > 10) {
+          $('#refreshFoldsError').text('Price folds must be between 2 and 10').show()
+          return
+        }
+      }
+    }
+    $('#refreshListingsModal').modal('hide')
+    $('#informationModal').modal('show')
+    var params = {jobId}
+    if(priceFolds) params.priceFolds = priceFolds
+    APIresetJob(JSON.stringify(params))
+  })
+  $('#refreshListingsModal').on('hidden.bs.modal', function(){ $(this).remove() })
+  $('#refreshListingsModal').modal('show')
 }
 
 function mapClearInformationWindow()
@@ -232,15 +276,39 @@ function openPhotoGallery(data)
   }
 
   if(cats && Object.keys(cats).length) {
+    // Separate multi-pic categories from single-pic categories
+    var multiCats = {}, singleCats = {}
     Object.keys(cats).forEach(function(cat) {
+      if(cats[cat].length > 1) multiCats[cat] = cats[cat]
+      else singleCats[cat] = cats[cat]
+    })
+
+    // Render multi-pic categories normally
+    Object.keys(multiCats).forEach(function(cat) {
       html += '<div class="gallery-category">'
       html += '<h3 class="gallery-cat-title">'+cat+'</h3>'
       html += '<div class="gallery-cat-grid">'
-      cats[cat].forEach(function(url) {
+      multiCats[cat].forEach(function(url) {
         html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
       })
       html += '</div></div>'
     })
+
+    // Combine single-pic categories into one row with overlaid labels
+    var singleKeys = Object.keys(singleCats)
+    if(singleKeys.length) {
+      html += '<div class="gallery-category">'
+      html += '<h3 class="gallery-cat-title">Other Photos</h3>'
+      html += '<div class="gallery-cat-grid">'
+      singleKeys.forEach(function(cat) {
+        var url = singleCats[cat][0]
+        html += '<div class="gallery-thumb-labeled">'
+        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+        html += '<span class="gallery-thumb-label">'+cat+'</span>'
+        html += '</div>'
+      })
+      html += '</div></div>'
+    }
   } else {
     urls.forEach(function(url){
       html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
@@ -270,17 +338,82 @@ function closePhotoZoom()
   $('#photoGalleryZoomImg').attr('src', '')
 }
 
+function openAvailabilityCalendar(adId) {
+  var ad = typeof _gridAds !== 'undefined' ? _gridAds.find(function(a){ return a._id === adId }) : null
+  if(!ad && typeof _markers !== 'undefined') {
+    var m = _markers.find(function(mk){ return mk.adData && mk.adData._id === adId })
+    if(m) ad = m.adData
+  }
+  if(!ad || !ad.availability) {
+    showAlertModal('Availability Not Found', 'Availability data is not available for this listing. If it\'s an Airbnb listing, try refreshing it to fetch the 12-month calendar.')
+    return
+  }
+  
+  $('#availabilityTitle').text('12-Month Availability: ' + ad.title)
+  var grid = $('#availabilityCalendarGrid')
+  grid.empty()
+  
+  // Group by month
+  var months = {}
+  Object.keys(ad.availability).sort().forEach(function(date) {
+    var monthKey = date.substring(0, 7) // YYYY-MM
+    if(!months[monthKey]) months[monthKey] = []
+    months[monthKey].push(Object.assign({date: date}, ad.availability[date]))
+  })
+  
+  Object.keys(months).forEach(function(mKey) {
+    var mName = moment(mKey + '-01').format('MMMM YYYY')
+    var html = '<div class="calendar-month-box" style="border:1px solid #ddd;border-radius:6px;overflow:hidden;background:#f9f9f9">'
+    html += '<div style="background:#f0f0f0;padding:6px 10px;font-weight:600;text-align:center;border-bottom:1px solid #ddd">'+mName+'</div>'
+    html += '<div style="display:grid;grid-template-columns:repeat(7, 1fr);font-size:10px;text-align:center;background:#fff">'
+    
+    // Header days
+    var shortDays = ['Su','Mo','Tu','We','Th','Fr','Sa']
+    shortDays.forEach(function(d){ html += '<div style="padding:4px 0;background:#fafafa;font-weight:600;border-bottom:1px solid #eee;color:#777">'+d+'</div>' })
+    
+    // Fill empty days before 1st
+    var firstDate = moment(mKey + '-01')
+    for(var i=0; i<firstDate.day(); i++) { html += '<div style="padding:8px 0;border-bottom:1px solid #f9f9f9;border-right:1px solid #f9f9f9"></div>' }
+    
+    months[mKey].forEach(function(day) {
+      var color = day.available ? '#e8f5e9' : '#ffebee'
+      var textColor = day.available ? '#2e7d32' : '#c62828'
+      var dateNum = day.date.substring(8)
+      var priceHtml = day.price ? '<div style="font-size:8px;margin-top:2px;font-weight:400">'+day.price+'</div>' : ''
+      html += '<div style="padding:6px 2px;background:'+color+';color:'+textColor+';border-bottom:1px solid #fff;border-right:1px solid #fff;display:flex;flex-direction:column;align-items:center;min-height:38px">'
+      html += '<strong>'+parseInt(dateNum)+'</strong>'
+      html += priceHtml
+      html += '</div>'
+    })
+    
+    html += '</div></div>'
+    grid.append(html)
+  })
+  
+  $('#availabilityOverlay').fadeIn(200)
+  $('body').css('overflow','hidden')
+}
+
+function closeAvailabilityCalendar() {
+  $('#availabilityOverlay').fadeOut(200)
+  $('body').css('overflow','')
+}
+
 function clearJobCache()
 {
-  if(!confirm("Are you sure you want to clear all cached listings for this search? This will remove them from the database."))
-    return false
-  APIclearJobAds(JSON.stringify({jobId}), function(result){
-    clearMapMarkers('all')
-    _markers = []
-    $(".resultscount").html('Last Updated: N/A, Number of results: 0')
-    alert('Cleared ' + (result.removed || 0) + ' cached listings.')
-  })
-  return true
+  showConfirmModal(
+    'Clear Cached Listings',
+    'Are you sure you want to clear all cached listings for this search? This will remove them from the database.',
+    function() {
+      APIclearJobAds(JSON.stringify({jobId}), function(result){
+        clearMapMarkers('all')
+        _markers = []
+        $(".resultscount").html('Last Updated: N/A, Number of results: 0')
+        showAlertModal('Listings Cleared', 'Cleared <strong>' + (result.removed || 0) + '</strong> cached listings.')
+      })
+    },
+    { confirmLabel: 'Clear Cache', confirmClass: 'btn-danger' }
+  )
 }
 
 var _listingPopupMap = null
@@ -310,11 +443,14 @@ function openListingMapPopup(lat, lon, title) {
 
 function mapResetViewed()
 {
-  let retVal = confirm("Are you sure you want to clear viewed ads history of this search?")
-  if(!retVal)
-    return false
-  localStorage.removeItem('visitedUrls'+jobId)
-  getViewedMarkers().forEach(marker => marker.setIcon("https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png"));
-  visitedUrls=[]
-  return true
+  showConfirmModal(
+    'Clear Viewed History',
+    'Are you sure you want to clear the viewed ads history of this search?',
+    function() {
+      localStorage.removeItem('visitedUrls'+jobId)
+      getViewedMarkers().forEach(marker => marker.setIcon("https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png"))
+      visitedUrls=[]
+    },
+    { confirmLabel: 'Clear History', confirmClass: 'btn-danger' }
+  )
 }

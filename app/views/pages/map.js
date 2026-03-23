@@ -31,6 +31,11 @@ function mapfunc()
 
   $('#filterJobId').val(jobId)
 
+  // Hide job-specific actions when viewing multiple searches
+  if(jobId === 'all' || jobId === 'multi') {
+    $('[onclick="resetJob()"], [onclick="clearJobCache()"]').hide()
+  }
+
   // Restore persisted filters first, then let URL params override
   restoreFilters()
   if(urlParams.fromPrice) $("#fromPrice").val(urlParams.fromPrice)

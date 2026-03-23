@@ -16,6 +16,11 @@ function gridfunc() {
   $('#pageTitle').text(jobName + (_favoritesOnly ? ' - Favorites' : ''))
   $('#filterJobId').val(jobId)
 
+  // Hide job-specific actions when viewing multiple searches
+  if(jobId === 'all' || jobId === 'multi') {
+    $('[onclick="resetJob()"], [onclick="clearJobCache()"]').hide()
+  }
+
   // Restore persisted filters first, then let URL params override
   restoreFilters()
   if(urlParams.fromPrice) $('#fromPrice').val(urlParams.fromPrice)
@@ -218,6 +223,10 @@ function buildCardHtml(ad) {
   html += '    <div class="grid-card-actions">'
   html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
   html += '      '+photoBtnHtml
+  if(ad.platform === 'airbnb') {
+    if(ad.availability) html += '      <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i> Availability</button>'
+    else html += '      <button class="btn btn-xs btn-default" style="opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
+  }
   if(ad.lat && ad.lon) html += '      <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
   html += '      <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank"><i class="fa fa-external-link"></i> Airbnb</a>'
   html += '    </div>'
@@ -238,16 +247,38 @@ function buildRowHtml(ad) {
 
   var imagesHtml = ''
   if(cats && Object.keys(cats).length) {
-    imagesHtml = '<div class="grid-row-categories">'
+    // Separate multi-pic categories from single-pic categories
+    var multiCats = {}, singleCats = {}
     Object.keys(cats).forEach(function(cat) {
+      if(cats[cat].length > 1) multiCats[cat] = cats[cat]
+      else singleCats[cat] = cats[cat]
+    })
+
+    imagesHtml = '<div class="grid-row-categories">'
+    // Render multi-pic categories normally
+    Object.keys(multiCats).forEach(function(cat) {
       imagesHtml += '<div class="grid-row-cat">'
       imagesHtml += '<div class="grid-row-cat-title">'+cat+'</div>'
       imagesHtml += '<div class="grid-row-images">'
-      cats[cat].forEach(function(url) {
+      multiCats[cat].forEach(function(url) {
         imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
       })
       imagesHtml += '</div></div>'
     })
+    // Combine single-pic categories into one row with overlaid labels
+    var singleKeys = Object.keys(singleCats)
+    if(singleKeys.length) {
+      imagesHtml += '<div class="grid-row-cat">'
+      imagesHtml += '<div class="grid-row-images">'
+      singleKeys.forEach(function(cat) {
+        var url = singleCats[cat][0]
+        imagesHtml += '<div class="grid-row-img-labeled">'
+        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+        imagesHtml += '<span class="grid-row-img-label">'+cat+'</span>'
+        imagesHtml += '</div>'
+      })
+      imagesHtml += '</div></div>'
+    }
     imagesHtml += '</div>'
   } else {
     imagesHtml = '<div class="grid-row-images-wrap"><div class="grid-row-images">'
@@ -270,18 +301,37 @@ function buildRowHtml(ad) {
 
   var html = '<div class="grid-row-item">'
   html += '  <div class="grid-row-header">'
+  html += '    <button class="grid-row-collapse-btn" onclick="toggleRowCollapse(this)" title="Collapse/expand"><i class="fa fa-chevron-up"></i></button>'
   html += '    <span class="grid-row-title" title="'+ad.title+'">'+ad.title+'</span>'
   html += '    <span class="grid-row-price">$'+ad.price+'</span>'
   html += '    <span class="grid-row-details">'+details.join(' &middot; ')+'</span>'
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
   html += '    '+amenityHtml
   html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  if(ad.platform === 'airbnb') {
+    if(ad.availability) html += '    <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability" style="margin-left:4px"><i class="fa fa-calendar"></i> Availability</button>'
+    else html += '    <button class="btn btn-xs btn-default" style="margin-left:4px;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
+  }
   if(ad.lat && ad.lon) html += '    <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map" style="margin-left:4px"><i class="fa fa-map-marker"></i> Map</button>'
   html += '    <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank" style="margin-left:4px"><i class="fa fa-external-link"></i> Airbnb</a>'
   html += '  </div>'
-  html += imagesHtml
+  html += '  <div class="grid-row-body">'+imagesHtml+'</div>'
   html += '</div>'
   return html
+}
+
+function toggleRowCollapse(btn) {
+  var $item = $(btn).closest('.grid-row-item')
+  var isCollapsing = !$item.hasClass('collapsed')
+  $item.toggleClass('collapsed')
+  if(isCollapsing) {
+    // Scroll so the listing header is at the top of the viewport
+    var $cw = $('.content-wrapper')
+    var itemTop = $item.offset().top
+    var cwTop = $cw.offset().top
+    var targetScroll = $cw.scrollTop() + (itemTop - cwTop) - 4
+    $cw.animate({ scrollTop: targetScroll }, 250)
+  }
 }
 
 function gridAdPhotos(adId) {

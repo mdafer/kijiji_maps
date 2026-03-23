@@ -10,7 +10,8 @@ module.exports = {
 			this.queue=require('../helpers/queue'),
 			this.common=require('../helpers/common'),
 			this.scraper= require('../helpers/scraper'),
-			this.airbnbScraper= require('../helpers/airbnb-scraper')
+			this.airbnbScraper= require('../helpers/airbnb-scraper'),
+			this.fbScraper= require('../helpers/fbscraper')
 		}
 		return this
 	},

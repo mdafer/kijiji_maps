@@ -44,6 +44,11 @@ function buildPopupHtml(ad) {
     var pics = ad.picture_urls || []
     if(pics.length > 1)
       html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdPhotosData(\''+ad.airbnbId+'\'))">Photos ('+pics.length+')</button>'
+    
+    if(ad.availability)
+      html += '<button class="btn btn-xs btn-warning" style="margin:4px 0;width:100%" onclick="openAvailabilityCalendar(\''+ad._id+'\')"><i class="fa fa-calendar"></i> Availability (12m)</button>'
+    else
+      html += '<button class="btn btn-xs btn-default" style="margin:4px 0;width:100%;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
   }
 
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
@@ -272,7 +277,7 @@ function _bindShapeEditListeners(shape) {
 }
 
 function startDrawing(){
-  if(!map) { alert('Open map view first to draw an area.'); return }
+  if(!map) { showAlertModal('Map Not Open', 'Open the map view first to draw an area.'); return }
   if(_drawnShape) clearDrawnShape()
   if(!_drawingManager) {
     _drawingManager = new google.maps.drawing.DrawingManager({
@@ -291,10 +296,9 @@ function startDrawing(){
     })
   }
   _drawingManager.setMap(map)
-  var mode = confirm('Click OK to draw a circle, or Cancel to draw a polygon.')
-    ? google.maps.drawing.OverlayType.CIRCLE
-    : google.maps.drawing.OverlayType.POLYGON
-  _drawingManager.setDrawingMode(mode)
+  showDrawShapeModal(function(mode) {
+    _drawingManager.setDrawingMode(mode)
+  })
 }
 
 function restoreShapeOnMap() {

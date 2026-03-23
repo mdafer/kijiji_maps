@@ -8,6 +8,7 @@ module.exports = {
 	newJob: async function(params, authUser, callback){
 		const platform = params.platform || 'kijiji'
 		const job = {id:uuid(), statusCode:2, name:params.name, url: params.url, description: params.description, platform}
+		if(params.priceFolds) job.priceFolds = params.priceFolds
 		await params.db.get('users').update({"email":authUser.email},{"$push": {"jobs":job}})
 			.catch((err) => {Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'});return callback({ status: Helpers.ApiStatus.DB_ERROR, meta: err})})//.then(() => db.close())
 		params.jobUrl = job.url
@@ -15,8 +16,10 @@ module.exports = {
 		params.pageUrl = job.url
 		params.pageNumber = 0
 		params.jobName = job.name
+		params.userId = authUser._id
+		if(job.priceFolds) params.priceFolds = job.priceFolds
 		callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: job.id}})
-		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : Helpers.scraper
+		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
 		const pagesProcessed = await scraper.processPage(params)
 		Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:pagesProcessed}, channels:authUser._id+'command'})
 		Helpers.logger.log({ command:'doneProcAndValid', print: pagesProcessed, channels:job.id+'command'})
@@ -63,14 +66,18 @@ module.exports = {
 				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job not found"}})
 			if(job.statusCode==2)
 				return callback({ status: Helpers.ApiStatus.JOB_ALREADY_BEING_PROCESSED, meta: {message:"Job already being processed. Please try again once it's done."}})
-			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": {"jobs.$.statusCode":2}})
+			const updateSet = {"jobs.$.statusCode":2}
+			if(params.priceFolds) updateSet["jobs.$.priceFolds"] = params.priceFolds
+			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": updateSet})
 			params.jobUrl = job.url
 			params.jobId = job.id
 			params.pageNumber = 0
 			params.pageUrl = job.url
 			params.jobName = job.name
+			params.userId = authUser._id
+			params.priceFolds = params.priceFolds || job.priceFolds || null
 			callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: params.jobId}})
-			const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : Helpers.scraper
+			const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : job.platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
 			await scraper.processPage(params)
 			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, pages:params.pageNumber}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: params.pageNumber, channels:params.jobId+'command'})
@@ -90,7 +97,7 @@ module.exports = {
 	},
 	processPendingJobs: function(params, authUser, callback){
 		Helpers.logger.log("Checking for stale pending jobs...")
-		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name', platform:'$jobs.platform', resumePageUrl:'$jobs.resumePageUrl', fingerprint:'$jobs.fingerprint', resumeOffset:'$jobs.resumeOffset'}}]).then((jobs) => {
+		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name', platform:'$jobs.platform', resumePageUrl:'$jobs.resumePageUrl', fingerprint:'$jobs.fingerprint', resumeOffset:'$jobs.resumeOffset', priceFolds:'$jobs.priceFolds'}}]).then((jobs) => {
 			if(!jobs || jobs.length==0)
 			{
 				callback({ status: Helpers.ApiStatus.NO_PENDING_JOBS, meta:{status:'In Progress', jobs}})
@@ -107,11 +114,13 @@ module.exports = {
 				myparams.jobName = job.name
 				myparams.pageNumber = 0
 				myparams.pageUrl = job.resumePageUrl || job.url
+				myparams.userId = job._id
 				if (job.fingerprint) myparams.fingerprint = job.fingerprint
 				if (job.resumeOffset) myparams.resumeOffset = job.resumeOffset
+				if (job.priceFolds) myparams.priceFolds = job.priceFolds
 				if (job.resumePageUrl || job.resumeOffset)
 					Helpers.logger.log(`Resuming job ${job.name} (${job.id}) from offset: ${job.resumeOffset || 0}`)
-				const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : Helpers.scraper
+				const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : job.platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
 				const processedPages = await scraper.processPage(myparams)
 				Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:processedPages}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: processedPages, channels:job.id+'command'})

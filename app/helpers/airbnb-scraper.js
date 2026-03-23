@@ -12,7 +12,8 @@ const Helpers = require('../helpers/includes'),
 	eachOfLimit = require('async/eachOfLimit'),
 	axios = require('axios'),
 	{ fetchPage, seedCookies } = require('../helpers/browser'),
-	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20'
+	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20',
+	AIRBNB_AVAILABILITY_HASH = 'b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914'
 
 const detailDelay = () => Number(process.env.AIRBNB_DETAIL_DELAY_MS) || 1000
 const requestErrorDelay = () => Number(process.env.AIRBNB_ERROR_DELAY_MS) || 60000
@@ -323,6 +324,63 @@ async function fetchListingDetails(listingId, bookingParams) {
 }
 
 /**
+ * Fetch availability calendar for a listing for the next 12 months.
+ */
+async function fetchListingAvailability(listingId) {
+	const now = new Date()
+	const month = now.getUTCMonth() + 1
+	const year = now.getUTCFullYear()
+
+	const variables = {
+		request: {
+			count: 12,
+			listingId: String(listingId),
+			month: month,
+			year: year,
+			returnPropertyLevelCalendarIfApplicable: false
+		}
+	}
+
+	const extensions = {
+		persistedQuery: {
+			version: 1,
+			sha256Hash: AIRBNB_AVAILABILITY_HASH
+		}
+	}
+
+	const params = new URLSearchParams()
+	params.set('operationName', 'PdpAvailabilityCalendar')
+	params.set('locale', 'en')
+	params.set('currency', 'USD')
+	params.set('variables', JSON.stringify(variables))
+	params.set('extensions', JSON.stringify(extensions))
+
+	const url = `https://www.airbnb.com/api/v3/PdpAvailabilityCalendar/${AIRBNB_AVAILABILITY_HASH}?${params.toString()}`
+
+	try {
+		const response = await airbnbGet(url)
+		if (!response || !response.data) return null
+
+		const calendarMonths = (response.data.merlin && response.data.merlin.pdpAvailabilityCalendar && response.data.merlin.pdpAvailabilityCalendar.calendarMonths) || []
+		const availability = {}
+		calendarMonths.forEach(m => {
+			if (m.days) {
+				m.days.forEach(d => {
+					availability[d.calendarDate] = {
+						available: d.available,
+						price: d.price ? d.price.localPriceFormatted : null
+					}
+				})
+			}
+		})
+		return availability
+	} catch(e) {
+		Helpers.logger.log({print: `Error fetching availability for ${listingId}: ${e.message}`, channels: 'jobWarning'})
+		return null
+	}
+}
+
+/**
  * Scrape a single price range. Returns total listing count found.
  * Does NOT handle cleanup or job status — caller handles that.
  */
@@ -344,6 +402,7 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 	while (params.pageUrl && hasMore) {
 		try {
 			params.pageNumber++
+			if (params.foldPageNumber !== undefined) params.foldPageNumber++
 			let user = await params.db.get('users').findOne({'jobs.id': params.jobId})
 			let jobStatusCode = user ? user.jobs.find(job => job.id == params.jobId).statusCode : 0
 			if (!user || !jobStatusCode || jobStatusCode < 2) {
@@ -380,6 +439,14 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 			} catch(e) {}
 
 			if (!listings.length) {
+				// Check if the response explicitly says 0 total results — in this case it's not a soft-block
+				const totalCount = paginationMeta ? (paginationMeta.total_count || paginationMeta.totalCount) : null
+				if (offset === 0 && totalCount === 0) {
+					Helpers.logger.log({print: `[${rangeLabel}] Genuinely empty (total_count: 0) — skipping fold`, channels:params.jobId+'jobUpdate'})
+					hasMore = false
+					break
+				}
+
 				// Soft-block: Airbnb returns valid JSON but strips listing sections.
 				// Ask user to open URL in browser and paste the response.
 				Helpers.logger.log({print: `[${rangeLabel}] Soft-blocked at offset ${offset} — requesting manual response`, channels:params.jobId+'jobWarning'})
@@ -397,15 +464,31 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 						Helpers.io.emit('needManualResponse', { requestId, url: apiUrl, jobId: params.jobId })
 					})
 					const manualData = JSON.parse(manualJson)
+					if (manualData.manualEmpty) {
+						Helpers.logger.log({print: `[${rangeLabel}] Manual response confirmed empty search — skipping fold`, channels:params.jobId+'jobUpdate'})
+						hasMore = false
+						break
+					}
 					listings = extractListingsFromApiResponse(manualData)
 					const tabs = manualData.explore_tabs || []
 					if (tabs.length) paginationMeta = tabs[0].pagination_metadata
 					if (!listings.length) {
+						// If user pasted something but it's still empty, check total_count again
+						const manualTotalCount = paginationMeta ? (paginationMeta.total_count || paginationMeta.totalCount || 0) : null
+						if (manualTotalCount === 0 && paginationMeta) {
+							Helpers.logger.log({print: `[${rangeLabel}] Manual response confirmed empty search`, channels:params.jobId+'jobUpdate'})
+							hasMore = false
+							break
+						}
 						throw new Error('Pasted response also contained no listings')
 					}
 					Helpers.logger.log({print: `[${rangeLabel}] Manual response accepted — ${listings.length} listings extracted`, channels:params.jobId+'jobUpdate'})
 				} catch(manualErr) {
-					Helpers.logger.log({print: `[${rangeLabel}] Manual response failed: ${manualErr.message} — retrying after delay`, channels:params.jobId+'jobWarning'})
+					if (manualErr.message === 'manual-break') {
+						hasMore = false
+						break
+					}
+					Helpers.logger.log({print: `[${rangeLabel}] Manual response failed/skipped: ${manualErr.message} — retrying after delay`, channels:params.jobId+'jobWarning'})
 					params.pageNumber--
 					await Helpers.common.sleep(jitteredDelay(requestErrorDelay()))
 					continue
@@ -484,6 +567,9 @@ module.exports = {
 		if (!params.pageUrl || params.pageUrl == "")
 			return
 		params.index_site = 0
+		params.startTime = Date.now()
+		params.foldPageNumber = 0
+		params.totalListingsFound = 0
 		const resuming = !!params.fingerprint
 		if (!resuming)
 			params.fingerprint = Math.floor(Math.random() * (99999999999999 - 1 + 1) ) + 1
@@ -530,7 +616,41 @@ module.exports = {
 		// If no max price set, use a large default so we can still split
 		if (origPriceMax == null) origPriceMax = 50000
 
-		await scrapeRange(params, origPriceMin, origPriceMax, params.resumeOffset || 0)
+		if (params.priceFolds && params.priceFolds >= 2) {
+			const step = Math.ceil((origPriceMax - origPriceMin) / params.priceFolds)
+			const ranges = []
+			for (let i = 0; i < params.priceFolds; i++) {
+				const lo = origPriceMin + (step * i)
+				const hi = (i === params.priceFolds - 1) ? origPriceMax : origPriceMin + (step * (i + 1))
+				ranges.push({min: lo, max: hi})
+			}
+			Helpers.logger.log({print: `Splitting Airbnb search into ${ranges.length} price folds`, channels:params.jobId+'jobUpdate'})
+			params.totalFolds = ranges.length
+			let idx = 0
+			for (const range of ranges) {
+				idx++
+				params.foldIndex = idx
+				params.foldPageNumber = 0
+				params.foldListingsFound = 0
+				const rangeLabel = `$${range.min}-$${range.max}`
+				Helpers.logger.log({print: `Scraping price fold: ${rangeLabel}`, channels:params.jobId+'jobUpdate'})
+				const result = await scrapeRange(params, range.min, range.max)
+				if (result === -1) break // job aborted
+				if (result === 0) {
+					// Build the URL for the warning message
+					let foldUrl = params.pageUrl
+					try {
+						const urlObj = new URL(params.pageUrl)
+						urlObj.searchParams.set('price_min', String(range.min))
+						urlObj.searchParams.set('price_max', String(range.max))
+						foldUrl = urlObj.toString()
+					} catch(e) {}
+					Helpers.logger.log({print: `Fold ${rangeLabel} returned 0 listings — skipped. Verify manually (may be empty or soft-blocked): ${foldUrl}`, channels:params.jobId+'jobWarning'})
+				}
+			}
+		} else {
+			await scrapeRange(params, origPriceMin, origPriceMax, params.resumeOffset || 0)
+		}
 
 		// Clear resume offset now that the job finished
 		await params.db.get('users').update({"jobs.id": params.jobId}, {$unset: {"jobs.$.resumeOffset": ""}}).catch(() => {})
@@ -552,17 +672,45 @@ module.exports = {
 			console.log(e)
 		}
 
-		Helpers.logger.log({ command:'doneProc', print: params.pageNumber, channels:params.jobId+'command'})
+		Helpers.logger.log({ command:'doneProc', print: params.pageNumber, params: { startTime: params.startTime, totalListingsFound: params.totalListingsFound }, channels:params.jobId+'command'})
 		if(callback)
 			callback(null, params.pageNumber)
 		return params.pageNumber
 	},
 
 	processPageListings: async function(params, listings, callback=null){
-		Helpers.logger.log({command: 'procPageNumber', print:params.pageNumber, channels:params.jobId+'command'})
+		if (params.foldListingsFound !== undefined) params.foldListingsFound += listings.length
+		if (params.totalListingsFound !== undefined) params.totalListingsFound += listings.length
+
+		Helpers.logger.log({
+			command: 'procPageNumber', 
+			print: params.pageNumber, 
+			params: { 
+				startTime: params.startTime, 
+				foldIndex: params.foldIndex, 
+				totalFolds: params.totalFolds, 
+				foldPageNumber: params.foldPageNumber,
+				foldListingsFound: params.foldListingsFound,
+				totalListingsFound: params.totalListingsFound
+			}, 
+			channels: params.jobId+'command'
+		})
 		params.newAdsFound = false
 		await eachOfLimit(listings, 1, module.exports.processSingleListing.bind(null, params))
-		Helpers.logger.log({command: 'donePageNumber', params:{refresh:params.newAdsFound},print:params.pageNumber, channels:params.jobId+'command'})
+		Helpers.logger.log({
+			command: 'donePageNumber', 
+			params: { 
+				refresh: params.newAdsFound, 
+				startTime: params.startTime,
+				foldIndex: params.foldIndex,
+				totalFolds: params.totalFolds,
+				foldPageNumber: params.foldPageNumber,
+				foldListingsFound: params.foldListingsFound,
+				totalListingsFound: params.totalListingsFound
+			}, 
+			print: params.pageNumber, 
+			channels: params.jobId+'command'
+		})
 		if(callback)
 			callback(null,true)
 		return params.newAdsFound
@@ -581,8 +729,8 @@ module.exports = {
 			try{
 		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id), ['jobs.'+params.jobId]: {$exists: true}},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}, url}})
 		    	if (doc){
-		    		// If cached listing is missing amenities/photos, fetch them now
-		    		if ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1)) {
+		    		// If cached listing is missing amenities/photos/availability, fetch them now
+		    		if ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1) || !doc.availability) {
 		    			try {
 		    				const details = await fetchListingDetails(listing.id, params.bookingParams)
 		    				if (details) {
@@ -591,9 +739,12 @@ module.exports = {
 		    					if (details.picture_urls.length > 1) update.picture_urls = details.picture_urls
 		    					if (details.amenityIdMap && Object.keys(details.amenityIdMap).length) update.amenityIdMap = details.amenityIdMap
 		    					if (details.photo_categories) update.photo_categories = details.photo_categories
+		    					const availability = await fetchListingAvailability(listing.id)
+		    					if (availability) update.availability = availability
+
 		    					if (Object.keys(update).length) {
 		    						await params.db.get('ads').update({'airbnbId': String(listing.id)}, {$set: update})
-		    						Helpers.logger.log({print: `Updated details for cached listing: ${listing.id}`, channels:params.jobId+'jobUpdate'})
+		    						Helpers.logger.log({print: `Updated details and availability for cached listing: ${listing.id}`, channels:params.jobId+'jobUpdate'})
 		    					}
 		    				}
 		    			} catch(e) {
@@ -635,6 +786,13 @@ module.exports = {
 					Helpers.logger.log({print: `Could not fetch details for ${listing.id}: ${detailErr.message}`, channels:params.jobId+'jobWarning'})
 				}
 
+				let availability = null
+				try {
+					availability = await fetchListingAvailability(listing.id)
+				} catch(availErr) {
+					Helpers.logger.log({print: `Could not fetch availability for ${listing.id}: ${availErr.message}`, channels:params.jobId+'jobWarning'})
+				}
+
 			    params.db.get('ads').insert({
 					airbnbId: String(listing.id),
 					price, lat, lon, url, title,
@@ -652,6 +810,7 @@ module.exports = {
 					'datetime': new Date(),
 					'pageUrl': params.pageUrl,
 					'platform': 'airbnb',
+					'availability': availability,
 					'jobs': {[params.jobId]:{fingerprint: params.fingerprint}}
 			    }, function (err, doc) {
 			        if (err)

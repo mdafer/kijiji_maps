@@ -31,6 +31,27 @@ module.exports = {
 				myfilter.$and.push({['picture_urls.'+(minP-1)]: {$exists: true}})
 		}
 
+		// Availability date range filter (Airbnb listings)
+		if(vars.availableFrom || vars.availableTo) {
+			let from = vars.availableFrom ? new Date(vars.availableFrom) : null
+			let to = vars.availableTo ? new Date(vars.availableTo) : null
+			// If only one date given, treat as single-day or open-ended
+			if(from && !to) to = from
+			if(to && !from) from = to
+			// Generate each date in the range and require available=true
+			let current = new Date(from)
+			let end = new Date(to)
+			let availConditions = []
+			let maxDays = 365 // safety cap
+			while(current <= end && availConditions.length < maxDays) {
+				let dateStr = current.toISOString().substring(0, 10) // YYYY-MM-DD
+				availConditions.push({['availability.'+dateStr+'.available']: true})
+				current.setDate(current.getDate() + 1)
+			}
+			if(availConditions.length)
+				myfilter.$and.push(...availConditions)
+		}
+
 		if(vars.amenities)
 		{
 			let amenityList = Array.isArray(vars.amenities) ? vars.amenities : vars.amenities.split(',')
