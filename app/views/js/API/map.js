@@ -1,6 +1,15 @@
 async function APIgetAds(params, callback=null)
 {
-	$.ajax({ 
+	// Inject favorites filter if active
+	if(_favoritesOnly) {
+		var extra = {favoritesOnly: 'true'}
+		if(_favJobIds && _favJobIds.length) extra.jobIds = _favJobIds.join(',')
+		if(typeof params === 'string')
+			params += '&favoritesOnly=true' + (extra.jobIds ? '&jobIds='+encodeURIComponent(extra.jobIds) : '')
+		else if(typeof params === 'object')
+			params = Object.assign({}, params, extra)
+	}
+	$.ajax({
 	    type: "GET",
 	    dataType: "json",
         //contentType: "application/json",

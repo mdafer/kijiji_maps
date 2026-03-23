@@ -1,5 +1,5 @@
 module.exports = {
-	formatQuery: function (vars={})
+	formatQuery: function (vars={}, opts={})
 	{
 		vars.fromPrice = vars.fromPrice?Number(vars.fromPrice):undefined;
 		vars.toPrice = vars.toPrice?Number(vars.toPrice):undefined;
@@ -107,6 +107,7 @@ module.exports = {
 		const util = require('util');
 		console.log(util.inspect(myfilter, { showHidden: false, depth: null, colors: true }))
 
+		if(!opts.skipJobFilter)
 		myfilter.$and.push({['jobs.'+vars.jobId]:{$exists:true}})
 		console.log("myfilter5", myfilter)
 		if(myfilter.$and.length==0)

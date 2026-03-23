@@ -13,16 +13,16 @@ module.exports = {
 		params.date = params.date || moment(Date.now()).tz("America/Toronto").format("YYYY-MM-DD hh:mm:ss a")//z for zone
 		params.level = params.level || "info"
 		params.channels = params.channels || []
-		if(typeof params !== 'array')
+		if(!Array.isArray(params.channels))
 			params.channels = [params.channels]
 		params.channels.push('all')
 		params.channels.push(params.level)
 
-		//console.log(util.inspect(params, {showHidden: false, depth: null, colors:true}))
 		const channels = params.channels
+		params.channel = channels[0] || ''
 		delete params.channels
-		for (let i =0; i <channels.length; i++) {
-			this.io.emit(channels[i], params);
+		for (let i = 0; i < channels.length; i++) {
+			this.io.emit(channels[i], params)
 		}
 		if(params.command)
 			console.log(params.command+" "+params.print)

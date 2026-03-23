@@ -1,19 +1,63 @@
-const Helpers = require('../helpers/includes'),
-	requestDelay = 2000,
-	requestErrorDelay = 30000,
-	cloneDeep = require('lodash.clonedeep'),
-	axios = require('axios'),
-	eachOfLimit = require('async/eachOfLimit'),
-	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20',
-	requestConfig = {
-	    headers: {
-			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-			'Connection': 'keep-alive',
-			'Accept-Encoding': 'gzip, deflate',
-			'Accept': 'application/json',
-			'Accept-Language': 'en-US,en;q=0.9'
-		}
+function sanitizeKeys(obj) {
+	if(!obj || typeof obj !== 'object') return obj
+	const result = {}
+	for(const key of Object.keys(obj)) {
+		const safeKey = key.replace(/\./g, '\u2024').replace(/\$/g, '\uFF04')
+		result[safeKey] = obj[key]
 	}
+	return result
+}
+
+const Helpers = require('../helpers/includes'),
+	eachOfLimit = require('async/eachOfLimit'),
+	axios = require('axios'),
+	{ fetchPage, seedCookies } = require('../helpers/browser'),
+	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20'
+
+const detailDelay = () => Number(process.env.AIRBNB_DETAIL_DELAY_MS) || 1000
+const requestErrorDelay = () => Number(process.env.AIRBNB_ERROR_DELAY_MS) || 60000
+
+async function airbnbGet(url) {
+	const { status, html } = await fetchPage(url)
+	if (status >= 400) throw new Error(`Airbnb API returned ${status}`)
+	// Chromium wraps JSON responses in HTML — extract the text content
+	const match = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/) || html.match(/<body[^>]*>([\s\S]*?)<\/body>/)
+	const text = match ? match[1].replace(/<[^>]+>/g, '') : html.replace(/<[^>]+>/g, '')
+	try { return JSON.parse(text) } catch(e) { return text }
+}
+
+async function browserNavigate(url) {
+	const resp = await axios.get(url, {
+		headers: {
+			'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+			'accept-language': 'en-US,en;q=0.9',
+			'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+		},
+		timeout: 15000,
+	})
+	return typeof resp.data === 'string' ? resp.data : ''
+}
+
+function jitteredDelay(base) {
+	// Add ±25% jitter to avoid predictable request intervals
+	const jitter = base * 0.25
+	return Math.round(base + (Math.random() * jitter * 2 - jitter))
+}
+
+/**
+ * Human-like random delay between page fetches.
+ * Varies widely to avoid pattern detection: base ± 50%, with occasional
+ * longer pauses (simulating a user reading results before clicking next).
+ */
+function humanDelay() {
+	const base = Number(process.env.AIRBNB_REQUEST_DELAY_MS) || 3500
+	// 20% chance of a longer "reading" pause (2x-4x base)
+	if (Math.random() < 0.2) {
+		return Math.round(base * (2 + Math.random() * 2))
+	}
+	// Normal: base ± 50%
+	return Math.round(base * (0.5 + Math.random()))
+}
 
 /**
  * Convert an Airbnb search page URL into API query parameters
@@ -198,13 +242,7 @@ async function fetchListingDetails(listingId, bookingParams) {
 	const qs = qp.toString()
 	const url = 'https://www.airbnb.com/rooms/' + listingId + (qs ? '?' + qs : '')
 
-	const resp = await axios.get(url, {
-		...requestConfig,
-		maxRedirects: 5,
-		timeout: 15000
-	})
-
-	const html = typeof resp.data === 'string' ? resp.data : ''
+	const html = await browserNavigate(url)
 	if (!html) return null
 
 	// Extract the data-deferred-state-0 script tag content
@@ -228,6 +266,7 @@ async function fetchListingDetails(listingId, bookingParams) {
 	if (!sections || !sections.length) return null
 
 	const photos = []
+	const photoCategories = {}
 	const amenityNames = []
 	const amenityIdMap = {}
 
@@ -238,7 +277,20 @@ async function fetchListingDetails(listingId, bookingParams) {
 		if (sid === 'PHOTO_TOUR_SCROLLABLE_MODAL' && !photos.length) {
 			const items = (s.section && s.section.mediaItems) || []
 			items.forEach(img => {
-				if (img.baseUrl) photos.push(img.baseUrl)
+				if (img.baseUrl) {
+					photos.push(img.baseUrl)
+					const rawCat = img.caption || img.accessibilityLabel || img.roomInfo || ''
+					if (rawCat) {
+						// Normalize: "Bedroom 1 image 3" -> "Bedroom 1", "Photo 2 of Kitchen" -> "Kitchen"
+						const cat = rawCat
+							.replace(/\s*(image|photo|picture|img|pic)\s*\d+\s*$/i, '')
+							.replace(/^\s*(image|photo|picture|img|pic)\s*\d+\s*[-–—:.]?\s*(of\s+)?/i, '')
+							.trim()
+						const key = cat || rawCat
+						if (!photoCategories[key]) photoCategories[key] = []
+						photoCategories[key].push(img.baseUrl)
+					}
+				}
 			})
 		}
 		if (sid === 'HERO_DEFAULT' && !photos.length) {
@@ -264,8 +316,9 @@ async function fetchListingDetails(listingId, bookingParams) {
 
 	return {
 		picture_urls: photos,
+		photo_categories: Object.keys(photoCategories).length ? sanitizeKeys(photoCategories) : null,
 		amenities: amenityNames,
-		amenityIdMap
+		amenityIdMap: sanitizeKeys(amenityIdMap)
 	}
 }
 
@@ -273,14 +326,20 @@ async function fetchListingDetails(listingId, bookingParams) {
  * Scrape a single price range. Returns total listing count found.
  * Does NOT handle cleanup or job status — caller handles that.
  */
-async function scrapeRange(params, priceMin, priceMax) {
+async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 	const maxResults = Number(process.env.AIRBNB_MAX_RESULTS) || 270
 	const rangeLabel = priceMax != null ? `$${priceMin}-$${priceMax}` : `$${priceMin}+`
-	Helpers.logger.log({print: `Scraping price range: ${rangeLabel}`, channels:params.jobId+'jobUpdate'})
+	if (startOffset > 0) Helpers.logger.log({print: `Resuming price range: ${rangeLabel} from offset ${startOffset}`, channels:params.jobId+'jobUpdate'})
+	else Helpers.logger.log({print: `Scraping price range: ${rangeLabel}`, channels:params.jobId+'jobUpdate'})
 
-	let offset = 0
+	let offset = startOffset
+	let sectionOffset = 0
+	let searchSessionId = null
 	let hasMore = true
 	let totalFound = 0
+	// Track all listing IDs we've seen in this range to detect end-of-results
+	// (Airbnb repeats listings instead of returning empty when past the last page)
+	const seenListingIds = new Set()
 
 	while (params.pageUrl && hasMore) {
 		try {
@@ -298,43 +357,108 @@ async function scrapeRange(params, priceMin, priceMax) {
 			if (priceMax != null) apiParams.set('price_max', String(priceMax))
 			else apiParams.delete('price_max')
 			if (offset > 0) apiParams.set('items_offset', String(offset))
+			// Airbnb requires search_session_id and section_offset from previous
+			// responses to maintain pagination state — without these, later pages
+			// return empty listing sections (soft-block).
+			if (searchSessionId) apiParams.set('search_session_id', searchSessionId)
+			if (sectionOffset > 0) apiParams.set('section_offset', String(sectionOffset))
 			const apiUrl = 'https://www.airbnb.com/api/v2/explore_tabs?' + apiParams.toString()
 
 			Helpers.logger.log({print: `[${rangeLabel}] Fetching Airbnb API (offset: ${offset}) - ${apiUrl}`, channels:params.jobId+'jobUpdate'})
-			let resp = await axios.get(apiUrl, requestConfig)
+			const apiData = await airbnbGet(apiUrl)
+
+			if (!apiData || typeof apiData !== 'object' || !apiData.explore_tabs) {
+				throw new Error('Invalid Airbnb API response (possibly rate limited or blocked)')
+			}
 
 			let listings = []
 			let paginationMeta = null
-			if (resp.data && typeof resp.data === 'object') {
-				listings = extractListingsFromApiResponse(resp.data)
-				try {
-					const tabs = resp.data.explore_tabs || []
-					if (tabs.length) paginationMeta = tabs[0].pagination_metadata
-				} catch(e) {}
-			}
+			try {
+				listings = extractListingsFromApiResponse(apiData)
+				const tabs = apiData.explore_tabs || []
+				if (tabs.length) paginationMeta = tabs[0].pagination_metadata
+			} catch(e) {}
 
 			if (!listings.length) {
-				Helpers.logger.log({print: `[${rangeLabel}] No listings found (offset: ${offset}). Range complete.`, channels:params.jobId+'jobUpdate'})
+				// Soft-block: Airbnb returns valid JSON but strips listing sections.
+				// Ask user to open URL in browser and paste the response.
+				Helpers.logger.log({print: `[${rangeLabel}] Soft-blocked at offset ${offset} — requesting manual response`, channels:params.jobId+'jobWarning'})
+				const requestId = Math.random().toString(36).slice(2)
+				try {
+					const manualJson = await new Promise((resolve, reject) => {
+						const timeout = setTimeout(() => {
+							Helpers.pendingManualResponses.delete(requestId)
+							reject(new Error('Manual response timeout (5 min)'))
+						}, 300000)
+						Helpers.pendingManualResponses.set(requestId, {
+							resolve: (json) => { clearTimeout(timeout); resolve(json) },
+							reject: (err) => { clearTimeout(timeout); reject(err) }
+						})
+						Helpers.io.emit('needManualResponse', { requestId, url: apiUrl, jobId: params.jobId })
+					})
+					const manualData = JSON.parse(manualJson)
+					listings = extractListingsFromApiResponse(manualData)
+					const tabs = manualData.explore_tabs || []
+					if (tabs.length) paginationMeta = tabs[0].pagination_metadata
+					if (!listings.length) {
+						throw new Error('Pasted response also contained no listings')
+					}
+					Helpers.logger.log({print: `[${rangeLabel}] Manual response accepted — ${listings.length} listings extracted`, channels:params.jobId+'jobUpdate'})
+				} catch(manualErr) {
+					Helpers.logger.log({print: `[${rangeLabel}] Manual response failed: ${manualErr.message} — retrying after delay`, channels:params.jobId+'jobWarning'})
+					params.pageNumber--
+					await Helpers.common.sleep(jitteredDelay(requestErrorDelay()))
+					continue
+				}
+			}
+
+			// Reset soft-block counter on success
+			softBlockRetries = 0
+
+			// Detect end-of-results: Airbnb repeats listings once past the real last page
+			const newListings = listings.filter(l => !seenListingIds.has(l.id))
+			if (newListings.length === 0) {
+				Helpers.logger.log({print: `[${rangeLabel}] All ${listings.length} listings at offset ${offset} are duplicates — end of results`, channels:params.jobId+'jobUpdate'})
 				hasMore = false
 				break
 			}
+			listings.forEach(l => seenListingIds.add(l.id))
+			if (newListings.length < listings.length) {
+				Helpers.logger.log({print: `[${rangeLabel}] ${listings.length - newListings.length} duplicate listings filtered at offset ${offset}`, channels:params.jobId+'jobUpdate'})
+			}
 
-			totalFound += listings.length
-			Helpers.logger.log({print: `[${rangeLabel}] Found ${listings.length} listings on page ${params.pageNumber} (${totalFound} total in range)`, channels:params.jobId+'jobUpdate'})
+			totalFound += newListings.length
+			Helpers.logger.log({print: `[${rangeLabel}] Found ${newListings.length} new listings on page ${params.pageNumber} (${totalFound} total in range)`, channels:params.jobId+'jobUpdate'})
 
-			await module.exports.processPageListings(params, listings)
+			await module.exports.processPageListings(params, newListings)
+
+			// Capture pagination state for next request
+			if (paginationMeta) {
+				if (paginationMeta.search_session_id) searchSessionId = paginationMeta.search_session_id
+				if (paginationMeta.section_offset != null) sectionOffset = paginationMeta.section_offset
+			}
 
 			if (paginationMeta && paginationMeta.has_next_page === false) {
 				hasMore = false
+			} else if (paginationMeta && paginationMeta.items_offset) {
+				// Use Airbnb's own next-page offset instead of calculating it ourselves
+				offset = paginationMeta.items_offset
 			} else {
 				offset += listings.length
 			}
 
-			await Helpers.common.sleep(requestDelay)
+			// Save offset so job can resume here on restart
+			await params.db.get('users').update({"jobs.id": params.jobId}, {$set: {"jobs.$.resumeOffset": offset}}).catch(() => {})
+
+			// Human-like random delay between pages
+			const delay = humanDelay()
+			Helpers.logger.log({print: `[${rangeLabel}] Waiting ${(delay/1000).toFixed(1)}s before next page`, channels:params.jobId+'jobUpdate'})
+			await Helpers.common.sleep(delay)
 		} catch(e) {
 			params.pageNumber--
-			Helpers.logger.log({print: `[${rangeLabel}] Retrying Airbnb page in ${requestErrorDelay/1000}s: ${e}`, channels:params.jobId+'jobWarning'})
-			await Helpers.common.sleep(requestErrorDelay)
+			const backoff = jitteredDelay(requestErrorDelay())
+			Helpers.logger.log({print: `[${rangeLabel}] Retrying Airbnb page in ${Math.round(backoff/1000)}s: ${e}`, channels:params.jobId+'jobWarning'})
+			await Helpers.common.sleep(backoff)
 		}
 	}
 
@@ -360,7 +484,19 @@ module.exports = {
 		if (!params.pageUrl || params.pageUrl == "")
 			return
 		params.index_site = 0
-		params.fingerprint = Math.floor(Math.random() * (99999999999999 - 1 + 1) ) + 1
+		const resuming = !!params.fingerprint
+		if (!resuming)
+			params.fingerprint = Math.floor(Math.random() * (99999999999999 - 1 + 1) ) + 1
+		// Persist fingerprint so job can resume after a restart with the same fingerprint (avoids wiping scraped ads)
+		const fingerprintUpdate = resuming
+			? {"$set": {"jobs.$.fingerprint": params.fingerprint}}
+			: {"$set": {"jobs.$.fingerprint": params.fingerprint}, "$unset": {"jobs.$.resumePageUrl": ""}}
+		await params.db.get('users').update({"jobs.id":params.jobId}, fingerprintUpdate).catch(() => {})
+
+		// Seed Airbnb cookies from env into the shared browser
+		if (process.env.AIRBNB_COOKIES) {
+			await seedCookies(process.env.AIRBNB_COOKIES, '.airbnb.com')
+		}
 
 		// Extract booking params from search URL and remap to listing page format
 		try {
@@ -394,7 +530,10 @@ module.exports = {
 		// If no max price set, use a large default so we can still split
 		if (origPriceMax == null) origPriceMax = 50000
 
-		await scrapeRange(params, origPriceMin, origPriceMax)
+		await scrapeRange(params, origPriceMin, origPriceMax, params.resumeOffset || 0)
+
+		// Clear resume offset now that the job finished
+		await params.db.get('users').update({"jobs.id": params.jobId}, {$unset: {"jobs.$.resumeOffset": ""}}).catch(() => {})
 
 		try{
 			try{
@@ -422,7 +561,7 @@ module.exports = {
 	processPageListings: async function(params, listings, callback=null){
 		Helpers.logger.log({command: 'procPageNumber', print:params.pageNumber, channels:params.jobId+'command'})
 		params.newAdsFound = false
-		await eachOfLimit(listings, 2, module.exports.processSingleListing.bind(null, params))
+		await eachOfLimit(listings, 1, module.exports.processSingleListing.bind(null, params))
 		Helpers.logger.log({command: 'donePageNumber', params:{refresh:params.newAdsFound},print:params.pageNumber, channels:params.jobId+'command'})
 		if(callback)
 			callback(null,true)
@@ -451,6 +590,7 @@ module.exports = {
 		    					if (details.amenities.length) update.amenities = details.amenities
 		    					if (details.picture_urls.length > 1) update.picture_urls = details.picture_urls
 		    					if (details.amenityIdMap && Object.keys(details.amenityIdMap).length) update.amenityIdMap = details.amenityIdMap
+		    					if (details.photo_categories) update.photo_categories = details.photo_categories
 		    					if (Object.keys(update).length) {
 		    						await params.db.get('ads').update({'airbnbId': String(listing.id)}, {$set: update})
 		    						Helpers.logger.log({print: `Updated details for cached listing: ${listing.id}`, channels:params.jobId+'jobUpdate'})
@@ -459,7 +599,7 @@ module.exports = {
 		    			} catch(e) {
 		    				Helpers.logger.log({print: `Could not update cached listing ${listing.id}: ${e.message}`, channels:params.jobId+'jobWarning'})
 		    			}
-		    			await Helpers.common.sleep(requestDelay)
+		    			await Helpers.common.sleep(jitteredDelay(detailDelay()))
 		    		}
 		    		Helpers.logger.log({print:'Loading listing from cache: '+url, channels:params.jobId+'jobUpdate'})
 			    	return
@@ -482,12 +622,14 @@ module.exports = {
 				let fullPhotos = listing.picture_urls || []
 				let fullAmenities = listing.amenities || []
 				let fullAmenityIdMap = {}
+				let fullPhotoCategories = null
 				try {
 					const details = await fetchListingDetails(listing.id, params.bookingParams)
 					if (details) {
 						if (details.picture_urls.length) fullPhotos = details.picture_urls
 						if (details.amenities.length) fullAmenities = details.amenities
 						if (details.amenityIdMap) fullAmenityIdMap = details.amenityIdMap
+						if (details.photo_categories) fullPhotoCategories = details.photo_categories
 					}
 				} catch(detailErr) {
 					Helpers.logger.log({print: `Could not fetch details for ${listing.id}: ${detailErr.message}`, channels:params.jobId+'jobWarning'})
@@ -500,6 +642,7 @@ module.exports = {
 					description: listing.title || '',
 					picture_url: listing.picture_url || '',
 					picture_urls: fullPhotos,
+					photo_categories: fullPhotoCategories,
 					bedrooms: listing.bedrooms || 0,
 					bathrooms: listing.bathrooms || 0,
 					beds: listing.beds || 0,
@@ -517,8 +660,8 @@ module.exports = {
 			    return
 			}
 			catch(e){
-				Helpers.logger.log({print: `Retrying Airbnb listing in ${requestErrorDelay/1000}s: ${e}`, channels:params.jobId+'jobWarning'})
-			    await Helpers.common.sleep(requestErrorDelay)
+				Helpers.logger.log({print: `Retrying Airbnb listing in ${requestErrorDelay()/1000}s: ${e}`, channels:params.jobId+'jobWarning'})
+			    await Helpers.common.sleep(requestErrorDelay())
 			}
 		}
 	}

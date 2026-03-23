@@ -8,6 +8,35 @@ var _markers =[]
 var lastUpdated ="unknown"
 var visitedUrls
 var mapJobId
+var _favoriteIds = new Set()
+var _favoritesOnly = false
+
+// --- Lazy image loading with preload offset ---
+var _lazyImageObserver = null
+function initLazyImageObserver() {
+	if(_lazyImageObserver) return
+	var offset = (window.APP_CONFIG && APP_CONFIG.LAZY_LOAD_OFFSET_PX) || 500
+	_lazyImageObserver = new IntersectionObserver(function(entries) {
+		entries.forEach(function(entry) {
+			if(entry.isIntersecting) {
+				var img = entry.target
+				if(img.dataset.src) {
+					img.src = img.dataset.src
+					img.removeAttribute('data-src')
+				}
+				_lazyImageObserver.unobserve(img)
+			}
+		})
+	}, { rootMargin: offset + 'px' })
+}
+
+function observeLazyImages(container) {
+	initLazyImageObserver()
+	var imgs = (container || document).querySelectorAll('img[data-src]')
+	for(var i = 0; i < imgs.length; i++) {
+		_lazyImageObserver.observe(imgs[i])
+	}
+}
 
 $(document).ready(function($) {
 	$( "#loginButton" ).click(function() {
@@ -98,6 +127,34 @@ function filterProfileAmenityBubbles(){
 	})
 }
 
+// --- Favorites helpers ---
+function loadFavoriteIds() {
+	APIgetProfile(null, function(user){
+		_favoriteIds = new Set(user.favorites || [])
+	})
+}
+
+function isFavorite(adId) {
+	return _favoriteIds.has(adId)
+}
+
+function toggleFavorite(adId, callback) {
+	if(isFavorite(adId)) {
+		_favoriteIds.delete(adId)
+		APIremoveFavorite(adId, function(){ if(callback) callback(false) })
+	} else {
+		_favoriteIds.add(adId)
+		APIaddFavorite(adId, function(){ if(callback) callback(true) })
+	}
+}
+
+function toggleFavoriteBtn(el) {
+	var adId = $(el).data('adid')
+	toggleFavorite(adId, function(isFav) {
+		$(el).find('i').css('color', isFav ? '#e74c3c' : '#ccc')
+	})
+}
+
 function logout()
 {
 	try{
@@ -123,12 +180,19 @@ function clearGlobalVars()
 	lastUpdated ="unknown"
 	visitedUrls = null
 	mapJobId = null
+	_favoriteIds = new Set()
+	_favoritesOnly = false
+	_favJobIds = []
+	_shapeFilterGeo = null
+	_drawnShape = null
+	_currentSort = null
 }
 function clearLocalStorage()
 {
 	localStorage.removeItem('user')
 	localStorage.removeItem('jobId')
 	localStorage.removeItem('jobName')
+	clearSavedSettings()
 }
 
 //Fix bug with validator and submission in modals
@@ -291,4 +355,84 @@ function parseQueryParams(query) {
 		query_string[key].push(decodeURIComponent(value.replace(/\+/g, ' ')))
 	}
 	return query_string
+}
+
+// --- Persistent settings (localStorage) ---
+var _persistKeys = ['fromPrice','toPrice','fromDate','searchText','searchTitleOnly','minBedrooms','minBathrooms','minBeds','minPhotos','amenities','orAmenities']
+
+function saveFilters() {
+	var filters = {}
+	_persistKeys.forEach(function(key) {
+		var el = document.getElementById(key)
+		if(!el) return
+		if(el.type === 'checkbox') filters[key] = el.checked ? el.value : ''
+		else filters[key] = el.value || ''
+	})
+	localStorage.setItem('savedFilters', JSON.stringify(filters))
+}
+
+function restoreFilters() {
+	var raw = localStorage.getItem('savedFilters')
+	if(!raw) return
+	try { var filters = JSON.parse(raw) } catch(e) { return }
+	_persistKeys.forEach(function(key) {
+		var val = filters[key]
+		if(val === undefined) return
+		var el = document.getElementById(key)
+		if(!el) return
+		if(el.type === 'checkbox') el.checked = !!val
+		else el.value = val
+	})
+	// Sync minPhotos checkbox with hidden input
+	if(filters.minPhotos) {
+		$('#minPhotos').val(filters.minPhotos)
+		$('#minPhotosCheck').prop('checked', true)
+	}
+}
+
+function saveShapeGeo() {
+	if(_shapeFilterGeo) localStorage.setItem('savedShapeGeo', JSON.stringify(_shapeFilterGeo))
+	else localStorage.removeItem('savedShapeGeo')
+}
+
+function restoreShapeGeo() {
+	var raw = localStorage.getItem('savedShapeGeo')
+	if(!raw) return
+	try { _shapeFilterGeo = JSON.parse(raw) } catch(e) { _shapeFilterGeo = null }
+}
+
+function saveGridMode() {
+	localStorage.setItem('savedGridMode', _gridMode)
+}
+
+function restoreGridMode() {
+	var saved = localStorage.getItem('savedGridMode')
+	if(saved) _gridMode = saved
+}
+
+function saveSort() {
+	if(_currentSort) localStorage.setItem('savedSort', JSON.stringify(_currentSort))
+	else localStorage.removeItem('savedSort')
+}
+
+function restoreSort() {
+	var raw = localStorage.getItem('savedSort')
+	if(!raw) return
+	try { _currentSort = JSON.parse(raw) } catch(e) { _currentSort = null }
+}
+
+function saveFavoritesOnly() {
+	localStorage.setItem('savedFavoritesOnly', _favoritesOnly ? '1' : '')
+}
+
+function restoreFavoritesOnly() {
+	_favoritesOnly = !!localStorage.getItem('savedFavoritesOnly')
+}
+
+function clearSavedSettings() {
+	localStorage.removeItem('savedFilters')
+	localStorage.removeItem('savedShapeGeo')
+	localStorage.removeItem('savedGridMode')
+	localStorage.removeItem('savedSort')
+	localStorage.removeItem('savedFavoritesOnly')
 }

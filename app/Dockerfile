@@ -1,6 +1,13 @@
 FROM node:24-alpine
 
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ chromium nss freetype harfbuzz ca-certificates \
+    ttf-freefont font-noto font-noto-cjk font-noto-emoji \
+    dbus tzdata
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    TZ=America/Toronto \
+    LANG=en_CA.UTF-8
 
 WORKDIR /usr/src/app
 

@@ -131,6 +131,7 @@
             </ul>
           </li>
           <li><a href="#map" onclick='loadpage("map")'><i class="fa fa-map text-green"></i> <span>Map</span></a></li>
+          <li><a href="#favorites" onclick='loadpage("favorites", true)'><i class="fa fa-heart text-red"></i> <span>Favorites</span></a></li>
           <li><a href="#neighbors" onclick='loadpage("neighbors")'><i class="fa fa-circle-o text-aqua" ></i> <span>Friends</span></a></li>
           <!--<li><a target="_blank" href="http://getgoldoon.com/#contact"><i class="fa fa-circle-o text-white"></i> <span>Contact US</span></a></li>-->
         </ul>
@@ -172,6 +173,21 @@
   </div>
   <div id="photoGalleryZoom" onclick="closePhotoZoom()">
     <img id="photoGalleryZoomImg" src="">
+  </div>
+
+  <!-- Listing Map Popup Modal -->
+  <div id="listingMapModal" class="modal fade" role="dialog" style="display:none;">
+    <div class="modal-dialog" style="width:600px;max-width:95vw;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal">&times;</button>
+          <h4 class="modal-title" id="listingMapModalTitle">Location</h4>
+        </div>
+        <div class="modal-body" style="padding:0;max-height:none;">
+          <div id="listingMapDiv" style="width:100%;height:400px;"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ./wrapper -->
@@ -311,10 +327,12 @@
 <script src="js/helpers/historyManager.js"></script>
 <script src="js/helpers/map.js"></script>
 <script src="js/controllers/map.js"></script>
+<script src="pages/toolbar.js"></script>
 <script src="pages/main.js"></script>
 <script src="pages/searches.js"></script>
 <script src="pages/map.js"></script>
 <script src="pages/grid.js"></script>
+<script src="pages/favorites.js"></script>
 <script src="pages/causedetail.js"></script>
 <script src="pages/neighbordetail.js"></script>
 
@@ -323,10 +341,51 @@
 <script src="js/API/users.js"></script>
 <script src="js/API/searches.js"></script>
 <script src="js/API/map.js"></script>
+<script src="js/API/favorites.js"></script>
 
 <script>
-  socket=io()
-  
+  socket=io({ transports: ['websocket', 'polling'] })
+  socket.on('connect', function(){ console.log('Socket connected:', socket.id) })
+  socket.on('connect_error', function(err){ console.log('Socket connection error:', err.message) })
+
+  // Manual paste flow — when backend is soft-blocked, show inline UI in information modal
+  socket.on('needManualResponse', function(data) {
+    window._pendingManualRequestId = data.requestId
+    // Open the information modal if not already open
+    $('#informationModal').modal('show')
+    // Build the inline paste UI as an info row
+    var row = '<div id="manualPasteRow" class="row" style="background:#fff3cd;padding:8px;margin:4px 0;border-radius:4px">' +
+      '<div class="col-xs-12">' +
+        '<strong style="color:#856404">Soft-blocked by Airbnb</strong> — ' +
+        '<a href="' + data.url + '" target="_blank" style="word-break:break-all">Open this URL in your browser</a>, ' +
+        'copy the full JSON response, and paste it below:' +
+        '<div style="margin-top:6px;display:flex;gap:6px">' +
+          '<textarea id="manualPasteInput" rows="3" class="form-control" placeholder="Paste JSON response here..." style="flex:1;font-size:12px;font-family:monospace"></textarea>' +
+        '</div>' +
+        '<div style="margin-top:6px">' +
+          '<button class="btn btn-primary btn-sm" onclick="submitManualPaste()">Submit</button> ' +
+          '<button class="btn btn-default btn-sm" onclick="skipManualPaste()">Skip</button> ' +
+          '<span id="manualPasteError" style="color:#a94442;margin-left:8px"></span>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+    $('#messages').append(row)
+    $("#messages").scrollTop($("#messages")[0].scrollHeight)
+  })
+
+  window.submitManualPaste = function() {
+    var json = ($('#manualPasteInput').val() || '').trim()
+    if (!json) { $('#manualPasteError').text('Paste the JSON response first'); return }
+    try { JSON.parse(json) } catch(e) { $('#manualPasteError').text('Invalid JSON: ' + e.message); return }
+    socket.emit('manualResponse', { requestId: window._pendingManualRequestId, json: json })
+    $('#manualPasteRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#3c763d"><strong>Manual response submitted</strong></div></div>')
+  }
+
+  window.skipManualPaste = function() {
+    socket.emit('manualResponseError', { requestId: window._pendingManualRequestId, error: 'User skipped' })
+    $('#manualPasteRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#856404"><strong>Skipped — will retry after delay</strong></div></div>')
+  }
+
   $(function () {
     renderpage();
   });

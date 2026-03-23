@@ -43,16 +43,27 @@ function buildPopupHtml(ad) {
 
     var pics = ad.picture_urls || []
     if(pics.length > 1)
-      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdById(\''+ad.airbnbId+'\').picture_urls)">Photos ('+pics.length+')</button>'
+      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdPhotosData(\''+ad.airbnbId+'\'))">Photos ('+pics.length+')</button>'
   }
 
-  html += '<h4><a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">'+visitLabel+'</a></h4></div>'
+  var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
+  html += '<div style="margin:4px 0;display:flex;gap:6px;align-items:center">'
+  html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '<a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">'+visitLabel+'</a>'
+  html += '</div></div>'
   return html
 }
 
 function getAdById(airbnbId) {
   var m = _markers.find(function(mk){ return mk.adData && mk.adData.airbnbId === airbnbId })
   return m ? m.adData : null
+}
+
+function getAdPhotosData(airbnbId) {
+  var ad = getAdById(airbnbId)
+  if(!ad) return {urls: [], categories: null}
+  var urls = (ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad.picture_url ? [ad.picture_url] : [])
+  return {urls: urls, categories: typeof groupPhotoCategories === 'function' ? groupPhotoCategories(ad.photo_categories) : ad.photo_categories}
 }
 
 function setMarkersByAds(map, ads, centerLocation = false) {
@@ -216,9 +227,52 @@ function getDisplayAmenities(){
 // --- Drawing tools for geographic filtering ---
 var _drawingManager = null
 var _drawnShape = null
+var _shapeFilterGeo = null
 var _markersHiddenByShape = []
 
+function _extractShapeGeo(shape) {
+  if(!shape) return null
+  if(shape.getBounds) {
+    var c = shape.getCenter()
+    return { type: 'circle', lat: c.lat(), lng: c.lng(), radius: shape.getRadius() }
+  } else {
+    var paths = []
+    shape.getPath().forEach(function(p){ paths.push({ lat: p.lat(), lng: p.lng() }) })
+    return { type: 'polygon', paths: paths }
+  }
+}
+
+function hasActiveShapeFilter() {
+  return !!(_drawnShape || _shapeFilterGeo)
+}
+
+function isInsideShapeFilter(lat, lon) {
+  var geo = _shapeFilterGeo
+  if(!geo && _drawnShape) geo = _extractShapeGeo(_drawnShape)
+  if(!geo) return true
+  if(geo.type === 'circle') {
+    var center = new google.maps.LatLng(geo.lat, geo.lng)
+    var pos = new google.maps.LatLng(lat, lon)
+    return google.maps.geometry.spherical.computeDistanceBetween(pos, center) <= geo.radius
+  } else {
+    var poly = new google.maps.Polygon({ paths: geo.paths })
+    var pos = new google.maps.LatLng(lat, lon)
+    return google.maps.geometry.poly.containsLocation(pos, poly)
+  }
+}
+
+function _bindShapeEditListeners(shape) {
+  if(shape.getBounds) {
+    google.maps.event.addListener(shape, 'radius_changed', applyShapeFilter)
+    google.maps.event.addListener(shape, 'center_changed', applyShapeFilter)
+  } else {
+    google.maps.event.addListener(shape.getPath(), 'set_at', applyShapeFilter)
+    google.maps.event.addListener(shape.getPath(), 'insert_at', applyShapeFilter)
+  }
+}
+
 function startDrawing(){
+  if(!map) { alert('Open map view first to draw an area.'); return }
   if(_drawnShape) clearDrawnShape()
   if(!_drawingManager) {
     _drawingManager = new google.maps.drawing.DrawingManager({
@@ -228,43 +282,56 @@ function startDrawing(){
     })
     google.maps.event.addListener(_drawingManager, 'overlaycomplete', function(e){
       _drawnShape = e.overlay
+      _shapeFilterGeo = _extractShapeGeo(_drawnShape)
       _drawingManager.setDrawingMode(null)
       applyShapeFilter()
-      // Re-apply filter when shape is edited
-      if(e.type === 'circle') {
-        google.maps.event.addListener(_drawnShape, 'radius_changed', applyShapeFilter)
-        google.maps.event.addListener(_drawnShape, 'center_changed', applyShapeFilter)
-      } else {
-        google.maps.event.addListener(_drawnShape.getPath(), 'set_at', applyShapeFilter)
-        google.maps.event.addListener(_drawnShape.getPath(), 'insert_at', applyShapeFilter)
-      }
+      _bindShapeEditListeners(_drawnShape)
       $('#drawAreaBtn').addClass('btn-primary').removeClass('btn-default')
       $('#clearShapeBtn').show()
     })
   }
   _drawingManager.setMap(map)
-  // Show a simple choice: circle or polygon
   var mode = confirm('Click OK to draw a circle, or Cancel to draw a polygon.')
     ? google.maps.drawing.OverlayType.CIRCLE
     : google.maps.drawing.OverlayType.POLYGON
   _drawingManager.setDrawingMode(mode)
 }
 
+function restoreShapeOnMap() {
+  if(!_shapeFilterGeo || !map) return
+  if(_drawnShape) {
+    // Re-attach existing shape object
+    _drawnShape.setMap(map)
+    _bindShapeEditListeners(_drawnShape)
+  } else {
+    // Recreate from saved geometry
+    var opts = { fillColor: '#2196F3', fillOpacity: 0.15, strokeColor: '#2196F3', strokeWeight: 2, editable: true, map: map }
+    if(_shapeFilterGeo.type === 'circle') {
+      _drawnShape = new google.maps.Circle(Object.assign(opts, { center: { lat: _shapeFilterGeo.lat, lng: _shapeFilterGeo.lng }, radius: _shapeFilterGeo.radius }))
+    } else {
+      _drawnShape = new google.maps.Polygon(Object.assign(opts, { paths: _shapeFilterGeo.paths }))
+    }
+    _bindShapeEditListeners(_drawnShape)
+  }
+  applyShapeFilter()
+  $('#drawAreaBtn').addClass('btn-primary').removeClass('btn-default')
+  $('#clearShapeBtn').show()
+}
+
 function applyShapeFilter(){
-  // Show any previously hidden markers first
   _markersHiddenByShape.forEach(function(m){ m.setMap(map) })
   _markersHiddenByShape = []
   if(!_drawnShape) return
+  _shapeFilterGeo = _extractShapeGeo(_drawnShape)
+  saveShapeGeo()
   _markers.forEach(function(marker){
     var pos = marker.getPosition()
     var inside = false
     if(_drawnShape.getBounds) {
-      // Circle
       var center = _drawnShape.getCenter()
       var radius = _drawnShape.getRadius()
       inside = google.maps.geometry.spherical.computeDistanceBetween(pos, center) <= radius
     } else {
-      // Polygon
       inside = google.maps.geometry.poly.containsLocation(pos, _drawnShape)
     }
     if(!inside && marker.getMap()) {
@@ -273,7 +340,7 @@ function applyShapeFilter(){
     }
   })
   var visibleCount = _markers.length - _markersHiddenByShape.length
-  $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ visibleCount + ' (filtered by area)')
+  $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ visibleCount + ' (area filtered)')
 }
 
 function clearDrawnShape(){
@@ -281,11 +348,17 @@ function clearDrawnShape(){
     _drawnShape.setMap(null)
     _drawnShape = null
   }
+  _shapeFilterGeo = null
+  saveShapeGeo()
   if(_drawingManager) _drawingManager.setDrawingMode(null)
-  // Restore hidden markers
-  _markersHiddenByShape.forEach(function(m){ m.setMap(map) })
+  _markersHiddenByShape.forEach(function(m){ if(map) m.setMap(map) })
   _markersHiddenByShape = []
   $('#drawAreaBtn').removeClass('btn-primary').addClass('btn-default')
   $('#clearShapeBtn').hide()
-  $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
+  // If on grid view, reload ads without shape filter
+  if(window.currentState === 'grid' && typeof loadGridAds === 'function') {
+    loadGridAds($('#filtersForm').serialize())
+  } else {
+    $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
+  }
 }

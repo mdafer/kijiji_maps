@@ -27,6 +27,9 @@ function renderpage(params={})
 	$('.modal').removeClass('fade')
 	$('.modal').modal('hide')
 	$('.modal').addClass('fade')
+	$('.modal-backdrop').remove()
+	$('body').removeClass('modal-open')
+	$('.page-modal').remove()
 	//$("body").addClass('sidebar-collapse').trigger('collapsed.pushMenu')
 	if(localStorage.getItem('user') && JSON.parse(localStorage.getItem('user')).email == "Test@test.com")
 		localStorage.removeItem('user')
@@ -56,6 +59,7 @@ function renderpage(params={})
 		$('#profileForm [name="firstName"]').val(myUser.firstName)
 		$('#profileForm [name="lastName"]').val(myUser.lastName)
 		$('#profileForm [name="email"]').val(myUser.email)
+		loadFavoriteIds()
 	}
 
 	let splitter = location.href.lastIndexOf('#')
@@ -75,8 +79,12 @@ function renderpage(params={})
 		return
 	}
 
+	$('.BStooltip').tooltip('destroy')
+	$('.tooltip').remove()
 	let mypage = window[mystate+'page']
 	$('#maincontent').html(mypage)
+	$('#maincontent .modal').addClass('page-modal').appendTo('body')
+	$('.content-wrapper').scrollTop(0)
 
 	if(window[mystate+'func'])
 		window[mystate+'func'](params.funcParams)

@@ -4,7 +4,7 @@ const express = require('express'),
 	http = require('http').Server(app),
 	socketio = require('socket.io'),
 	SocketServer = socketio.Server || socketio,
-	io = new SocketServer(http),
+	io = new SocketServer(http, { cors: { origin: '*' } }),
 	Helpers = require('./helpers/includes.js').initialize(io),
 	validator = require('validator'),
 	{ check, validationResult } = require('express-validator'),
@@ -17,13 +17,33 @@ const express = require('express'),
 		password : process.env.MONGODB_PASSWORD
 	})
 
+// Shared state for manual response flow (soft-block bypass)
+Helpers.pendingManualResponses = new Map() // requestId -> {resolve, reject}
+
+io.on('connection', (socket) => {
+	socket.on('manualResponse', (data) => {
+		const pending = Helpers.pendingManualResponses.get(data.requestId)
+		if (pending) {
+			Helpers.pendingManualResponses.delete(data.requestId)
+			pending.resolve(data.json)
+		}
+	})
+	socket.on('manualResponseError', (data) => {
+		const pending = Helpers.pendingManualResponses.get(data.requestId)
+		if (pending) {
+			Helpers.pendingManualResponses.delete(data.requestId)
+			pending.reject(new Error(data.error || 'Manual response error'))
+		}
+	})
+})
+
 db.then(() => {
 	Helpers.logger.log('Connected to database')
 })
 
 app.get('/config.js', (req, res) => {
 	res.type('application/javascript');
-	res.send(`var APP_CONFIG = { GOOGLE_MAPS_KEY: "${process.env.GOOGLE_MAPS_KEY || ''}" };`);
+	res.send(`var APP_CONFIG = { GOOGLE_MAPS_KEY: "${process.env.GOOGLE_MAPS_KEY || ''}", LAZY_LOAD_OFFSET_PX: ${parseInt(process.env.LAZY_LOAD_OFFSET_PX) || 500} };`);
 });
 
 app.use(express.static('views'));
@@ -66,6 +86,22 @@ app.get('/jobAmenities', function(req, res, next){
 	Helpers.router.finish(req, res, Controllers.map.getJobAmenities);
 });
 
+
+app.post('/favorite', [
+		check('adId').exists().trim().escape()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.favorites.addFavorite);
+});
+
+app.post('/unfavorite', [
+		check('adId').exists().trim().escape()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.favorites.removeFavorite);
+});
+
+app.get('/favorites', function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.favorites.getFavorites);
+});
 
 app.post('/user', [
   		check('firstName').trim().escape().isLength({ min: 2 }),

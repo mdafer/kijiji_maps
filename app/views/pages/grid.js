@@ -1,173 +1,122 @@
-var gridpage = `
-    <section class="content-header">
-      <button class="btn btn-light" type="button" onclick="loadpage('main', true);">
-        <span class="fa fa-chevron-left" aria-hidden="true"></span>
-      </button><h1 id="gridTitle" style="display: inline;vertical-align: middle;">
-        Grid View
-        <small></small>
-      </h1>
-      <div class="btn-group" style="margin-left:10px">
-        <button id="gridModeCards" type="button" class="btn btn-primary btn-sm BStooltip" title="Card view" onclick="setGridMode('cards')"><i class="fa fa-th"></i></button>
-        <button id="gridModeRows" type="button" class="btn btn-default btn-sm BStooltip" title="Row view with all photos" onclick="setGridMode('rows')"><i class="fa fa-bars"></i></button>
-      </div>
-      <a class="btn btn-default btn-sm BStooltip" title="Switch to Map view" href="#map" onclick="loadpage('map', true)"><i class="fa fa-map"></i></a>
-      <button type="button" class="btn btn-primary btn-sm BStooltip" title="Filters & Settings" data-toggle="modal" data-target="#gridFiltersModal"><i class="fa fa-sliders"></i></button>
-      <div class="btn-group" style="margin-left:6px">
-        <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown"><i class="fa fa-sort"></i> Sort <span class="caret"></span></button>
-        <ul class="dropdown-menu">
-          <li><a href="#" onclick="sortGrid('price','asc');return false"><i class="fa fa-sort-amount-asc"></i> Price: Low to High</a></li>
-          <li><a href="#" onclick="sortGrid('price','desc');return false"><i class="fa fa-sort-amount-desc"></i> Price: High to Low</a></li>
-          <li class="divider"></li>
-          <li><a href="#" onclick="sortGrid('date','desc');return false"><i class="fa fa-sort-amount-desc"></i> Date: Newest First</a></li>
-          <li><a href="#" onclick="sortGrid('date','asc');return false"><i class="fa fa-sort-amount-asc"></i> Date: Oldest First</a></li>
-        </ul>
-      </div>
-      <p class="grid-resultscount" style="display:inline;margin-left:10px;font-size:13px">Results: 0</p>
-    </section>
-
+var gridpage = toolbarHtml + `
     <section class="content">
       <div id="gridContainer"></div>
     </section>
-
-<!-- Filters Modal -->
-<div id="gridFiltersModal" class="modal fade" role="dialog" style="display:none">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <button type="button" class="close" data-dismiss="modal">&times;</button>
-        <h4 class="modal-title">Filters</h4>
-      </div>
-      <div class="modal-body">
-        <div class="box-body">
-          <form role="form" id="gridFiltersForm" data-toggle="validator">
-            <input id="gridJobId" name="jobId" type="hidden">
-            <div class="form-group">
-              <label>Price</label>
-              <input id="gridFromPrice" name="fromPrice" type="text" placeholder="Min">
-              <input id="gridToPrice" name="toPrice" type="text" placeholder="Max">
-            </div>
-            <div class="form-group">
-              <label>Min Bedrooms</label>
-              <input id="gridMinBedrooms" name="minBedrooms" type="number" min="0" placeholder="Any" style="width:70px">
-              <label style="margin-left:15px">Min Bathrooms</label>
-              <input id="gridMinBathrooms" name="minBathrooms" type="number" min="0" placeholder="Any" style="width:70px">
-            </div>
-            <div class="form-group">
-              <label>Min Beds</label>
-              <input id="gridMinBeds" name="minBeds" type="number" min="0" placeholder="Any" style="width:70px">
-            </div>
-            <div class="form-group">
-              <label>Search text</label>
-              <input id="gridSearchText" name="searchText" type="text" placeholder="">
-            </div>
-            <div class="form-group">
-              <input type="checkbox" id="gridMinPhotosCheck" value="2" onchange="$('#gridMinPhotos').val(this.checked?'2':'')">
-              <label for="gridMinPhotosCheck">Hide listings with 1 or no photos</label>
-              <input id="gridMinPhotos" name="minPhotos" type="hidden">
-            </div>
-            <div class="form-group">
-              <input id="gridAmenitySearch" type="text" class="form-control input-sm" placeholder="Search amenities..." oninput="updateGridAmenityBubbles()" style="margin-bottom:8px">
-            </div>
-            <div class="form-group">
-              <label>AND Amenities <small style="color:#888">(all must match)</small></label>
-              <input id="gridAmenities" name="amenities" type="hidden">
-              <div id="gridAmenityBubblesAnd" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
-            </div>
-            <div class="form-group">
-              <label>OR Amenities <small style="color:#888">(at least one must match · right-click to move)</small></label>
-              <input id="gridOrAmenities" name="orAmenities" type="hidden">
-              <div id="gridAmenityBubblesOr" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
-            </div>
-            <input type="submit" value="Submit" style="display:none;">
-          </form>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <div class="pull-left"><button type="button" class="btn btn-default" data-dismiss="modal">Close</button></div>
-        <div class="pull-right"><button type="button" class="btn btn-primary" onclick="$('#gridFiltersForm').submit();">Filter</button></div>
-      </div>
-    </div>
-  </div>
-</div>
 `;
 
 var _gridMode = 'cards'
 var _gridAds = []
 var _gridRenderedCount = 0
 var _gridBatchSize = 50
-var _gridAllAmenities = new Set()
-var _gridAmenityIdMap = {}
-var _gridSavedDisplayAmenities = []
 var _gridScrollTimer = null
+var _currentSort = null
 
 function gridfunc() {
-  $('#gridTitle').text(jobName + ' - Grid View')
-  $('#gridJobId').val(jobId)
+  setViewMode('grid')
+  $('#pageTitle').text(jobName + (_favoritesOnly ? ' - Favorites' : ''))
+  $('#filterJobId').val(jobId)
 
-  if(urlParams.fromPrice) $('#gridFromPrice').val(urlParams.fromPrice)
-  if(urlParams.toPrice) $('#gridToPrice').val(urlParams.toPrice)
-  if(urlParams.minBedrooms) $('#gridMinBedrooms').val(urlParams.minBedrooms)
-  if(urlParams.minBathrooms) $('#gridMinBathrooms').val(urlParams.minBathrooms)
-  if(urlParams.minBeds) $('#gridMinBeds').val(urlParams.minBeds)
-  if(urlParams.searchText) $('#gridSearchText').val(urlParams.searchText)
+  // Restore persisted filters first, then let URL params override
+  restoreFilters()
+  if(urlParams.fromPrice) $('#fromPrice').val(urlParams.fromPrice)
+  if(urlParams.toPrice) $('#toPrice').val(urlParams.toPrice)
+  if(urlParams.searchText) $('#searchText').val(urlParams.searchText)
+  if(urlParams.minBedrooms) $('#minBedrooms').val(urlParams.minBedrooms)
+  if(urlParams.minBathrooms) $('#minBathrooms').val(urlParams.minBathrooms)
+  if(urlParams.minBeds) $('#minBeds').val(urlParams.minBeds)
   if(urlParams.minPhotos) {
-    $('#gridMinPhotos').val(urlParams.minPhotos)
-    $('#gridMinPhotosCheck').prop('checked', true)
+    $('#minPhotos').val(urlParams.minPhotos)
+    $('#minPhotosCheck').prop('checked', true)
   }
-  if(urlParams.amenities) $('#gridAmenities').val(urlParams.amenities)
-  if(urlParams.orAmenities) $('#gridOrAmenities').val(urlParams.orAmenities)
+  if(urlParams.amenities) $('#amenities').val(urlParams.amenities)
+  if(urlParams.orAmenities) $('#orAmenities').val(urlParams.orAmenities)
+
+  // Restore persisted state
+  restoreShapeGeo()
+  restoreFavoritesOnly()
 
   // Load displayAmenities from user account settings
   APIgetProfile(null, function(user){
-    if(user && user.displayAmenities) _gridSavedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
+    if(user && user.displayAmenities) _savedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
   })
 
-  $(".BStooltip").tooltip({ trigger: 'hover' })
+  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
 
-  $('#gridFiltersModal').on('show.bs.modal', function(){ updateGridAmenityBubbles() })
+  $('#filtersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })
 
-  $('#gridFiltersForm').on('submit', function(event) {
+  $('#filtersForm').on('submit', function(event) {
     event.preventDefault()
-    $('#gridFiltersModal').modal('hide')
-    loadGridAds($('#gridFiltersForm').serialize())
+    $('#filtersModal').modal('hide')
+    saveFilters()
+    loadGridAds($('#filtersForm').serialize())
   })
 
-  loadGridAds({...urlParams, jobId: jobId})
+  restoreSort()
+  restoreGridMode()
+  updateSortLabel()
+  setupSocketListeners()
+  loadGridAds($('#filtersForm').serialize())
 }
 
 function gridUnload() {
-  $('#gridFiltersForm').off('submit')
-  $(window).off('scroll.gridInfinite')
+  $('#filtersForm').off('submit')
+  $('#filtersModal').off('show.bs.modal')
+  teardownSocketListeners()
+  $('.content-wrapper').off('scroll.gridInfinite')
   if(_gridScrollTimer) { clearTimeout(_gridScrollTimer); _gridScrollTimer = null }
 }
 
 function loadGridAds(params) {
   APIgetAds(params, function(ads) {
+    // Apply shape filter if active
+    if(hasActiveShapeFilter()) {
+      ads = ads.filter(function(ad){ return isInsideShapeFilter(ad.lat, ad.lon) })
+    }
     _gridAds = ads
-    _gridAllAmenities = new Set()
-    _gridAmenityIdMap = {}
+    _allAmenities = new Set()
+    _amenityIdMap = {}
     ads.forEach(function(ad) {
       if(ad.amenities && ad.amenities.length)
-        ad.amenities.forEach(function(a){ _gridAllAmenities.add(a) })
-      if(ad.amenityIdMap) Object.assign(_gridAmenityIdMap, ad.amenityIdMap)
+        ad.amenities.forEach(function(a){ _allAmenities.add(a) })
+      if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
     })
+    if(_currentSort) _applySort()
     renderGrid()
   })
 }
 
-function sortGrid(field, dir) {
+function _applySort() {
+  if(!_currentSort) return
+  var field = _currentSort.field, dir = _currentSort.dir
   _gridAds.sort(function(a, b) {
     var va, vb
     if(field === 'price') {
       va = parseFloat(a.price) || 0
       vb = parseFloat(b.price) || 0
     } else {
-      // date from MongoDB ObjectId (first 8 hex chars = unix timestamp)
       va = a._id ? parseInt(a._id.substring(0, 8), 16) : 0
       vb = b._id ? parseInt(b._id.substring(0, 8), 16) : 0
     }
     return dir === 'asc' ? va - vb : vb - va
   })
+}
+
+function updateSortLabel() {
+  if(!_currentSort) { $('#sortLabel').text('Sort'); return }
+  var labels = {
+    'price_asc':  'Price: Low→High',
+    'price_desc': 'Price: High→Low',
+    'date_desc':  'Date: Newest',
+    'date_asc':   'Date: Oldest'
+  }
+  $('#sortLabel').text(labels[_currentSort.field + '_' + _currentSort.dir] || 'Sort')
+}
+
+function sortGrid(field, dir) {
+  _currentSort = { field: field, dir: dir }
+  saveSort()
+  _applySort()
+  updateSortLabel()
   renderGrid()
 }
 
@@ -182,7 +131,10 @@ function renderGrid() {
   var container = $('#gridContainer')
   container.empty()
   _gridRenderedCount = 0
-  $('.grid-resultscount').text('Results: ' + _gridAds.length)
+  var countText = 'Results: ' + _gridAds.length
+  if(_favoritesOnly) countText += ' (favorites)'
+  if(hasActiveShapeFilter()) countText += ' (area filtered)'
+  $('.resultscount').text(countText)
 
   if(_gridMode === 'cards')
     container.html('<div class="grid-cards" id="gridInner"></div>')
@@ -190,7 +142,8 @@ function renderGrid() {
     container.html('<div class="grid-rows" id="gridInner"></div>')
 
   renderGridBatch()
-  $(window).off('scroll.gridInfinite').on('scroll.gridInfinite', onGridScroll)
+  var $cw = $('.content-wrapper')
+  $cw.off('scroll.gridInfinite').on('scroll.gridInfinite', onGridScroll)
 }
 
 function onGridScroll() {
@@ -198,9 +151,10 @@ function onGridScroll() {
   if(_gridScrollTimer) return
   _gridScrollTimer = setTimeout(function(){
     _gridScrollTimer = null
-    var scrollBottom = $(window).scrollTop() + $(window).height()
-    var docHeight = $(document).height()
-    if(scrollBottom >= docHeight - 600)
+    var $cw = $('.content-wrapper')
+    var scrollBottom = $cw.scrollTop() + $cw.innerHeight()
+    var scrollHeight = $cw[0].scrollHeight
+    if(scrollBottom >= scrollHeight - 600)
       renderGridBatch()
   }, 80)
 }
@@ -218,16 +172,20 @@ function renderGridBatch() {
   tmp.innerHTML = html
   while(tmp.firstChild) frag.appendChild(tmp.firstChild)
   inner.appendChild(frag)
+  observeLazyImages(inner)
   _gridRenderedCount = end
+  var base = 'Results: ' + _gridAds.length
+  if(_favoritesOnly) base += ' (favorites)'
+  if(hasActiveShapeFilter()) base += ' (area filtered)'
   if(_gridRenderedCount < _gridAds.length)
-    $('.grid-resultscount').text('Results: ' + _gridAds.length + ' (showing ' + _gridRenderedCount + ')')
+    $('.resultscount').text(base + ' (showing ' + _gridRenderedCount + ')')
   else
-    $('.grid-resultscount').text('Results: ' + _gridAds.length)
+    $('.resultscount').text(base)
 }
 
 function buildCardHtml(ad) {
   var img = ad.picture_url || ''
-  var imgHtml = img ? '<img class="grid-card-img" src="'+img+'" referrerpolicy="no-referrer" loading="lazy">' : '<div class="grid-card-img grid-card-noimg"><i class="fa fa-image"></i></div>'
+  var imgHtml = img ? '<img class="grid-card-img" data-src="'+img+'" referrerpolicy="no-referrer">' : '<div class="grid-card-img grid-card-noimg"><i class="fa fa-image"></i></div>'
   var pics = ad.picture_urls || []
   var photoBtnHtml = pics.length > 1
     ? '<button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))"><i class="fa fa-camera"></i> '+pics.length+'</button>'
@@ -239,8 +197,8 @@ function buildCardHtml(ad) {
 
   var amenityHtml = ''
   if(ad.amenities && ad.amenities.length) {
-    var gridDisplayList = getGridDisplayAmenities()
-    var shownAmenities = gridDisplayList.length ? ad.amenities.filter(function(a){ return gridDisplayList.indexOf(a) !== -1 }) : ad.amenities
+    var displayList = getDisplayAmenities()
+    var shownAmenities = displayList.length ? ad.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : ad.amenities
     if(shownAmenities.length) {
       amenityHtml = '<div class="grid-card-amenities">'
       shownAmenities.forEach(function(a){ amenityHtml += '<span class="amenity-bubble">'+a+'</span>' })
@@ -255,8 +213,11 @@ function buildCardHtml(ad) {
   html += '    <div class="grid-card-price">$'+ad.price+'</div>'
   html += '    <div class="grid-card-details">'+details.join(' &middot; ')+'</div>'
   html += amenityHtml
+  var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
   html += '    <div class="grid-card-actions">'
+  html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
   html += '      '+photoBtnHtml
+  if(ad.lat && ad.lon) html += '      <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
   html += '      <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank"><i class="fa fa-external-link"></i> Airbnb</a>'
   html += '    </div>'
   html += '  </div>'
@@ -272,17 +233,33 @@ function buildRowHtml(ad) {
 
   var pics = ad.picture_urls || []
   if(!pics.length && ad.picture_url) pics = [ad.picture_url]
+  var cats = groupPhotoCategories(ad.photo_categories)
 
-  var imagesHtml = '<div class="grid-row-images">'
-  pics.forEach(function(url) {
-    imagesHtml += '<img class="grid-row-img" src="'+url+'" referrerpolicy="no-referrer" loading="lazy" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))">'
-  })
-  imagesHtml += '</div>'
+  var imagesHtml = ''
+  if(cats && Object.keys(cats).length) {
+    imagesHtml = '<div class="grid-row-categories">'
+    Object.keys(cats).forEach(function(cat) {
+      imagesHtml += '<div class="grid-row-cat">'
+      imagesHtml += '<div class="grid-row-cat-title">'+cat+'</div>'
+      imagesHtml += '<div class="grid-row-images">'
+      cats[cat].forEach(function(url) {
+        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+      })
+      imagesHtml += '</div></div>'
+    })
+    imagesHtml += '</div>'
+  } else {
+    imagesHtml = '<div class="grid-row-images">'
+    pics.forEach(function(url) {
+      imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+    })
+    imagesHtml += '</div>'
+  }
 
   var amenityHtml = ''
   if(ad.amenities && ad.amenities.length) {
-    var gridDisplayList = getGridDisplayAmenities()
-    var shownAmenities = gridDisplayList.length ? ad.amenities.filter(function(a){ return gridDisplayList.indexOf(a) !== -1 }) : ad.amenities
+    var displayList = getDisplayAmenities()
+    var shownAmenities = displayList.length ? ad.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : ad.amenities
     if(shownAmenities.length) {
       amenityHtml = '<span class="grid-row-amenities">'
       shownAmenities.forEach(function(a){ amenityHtml += '<span class="amenity-bubble">'+a+'</span>' })
@@ -295,8 +272,11 @@ function buildRowHtml(ad) {
   html += '    <span class="grid-row-title" title="'+ad.title+'">'+ad.title+'</span>'
   html += '    <span class="grid-row-price">$'+ad.price+'</span>'
   html += '    <span class="grid-row-details">'+details.join(' &middot; ')+'</span>'
+  var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
   html += '    '+amenityHtml
-  html += '    <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank" style="margin-left:8px"><i class="fa fa-external-link"></i> Airbnb</a>'
+  html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  if(ad.lat && ad.lon) html += '    <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map" style="margin-left:4px"><i class="fa fa-map-marker"></i> Map</button>'
+  html += '    <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank" style="margin-left:4px"><i class="fa fa-external-link"></i> Airbnb</a>'
   html += '  </div>'
   html += imagesHtml
   html += '</div>'
@@ -305,65 +285,19 @@ function buildRowHtml(ad) {
 
 function gridAdPhotos(adId) {
   var ad = _gridAds.find(function(a){ return a._id === adId })
-  return (ad && ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad && ad.picture_url ? [ad.picture_url] : [])
+  var urls = (ad && ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad && ad.picture_url ? [ad.picture_url] : [])
+  var cats = (ad && ad.photo_categories) ? groupPhotoCategories(ad.photo_categories) : null
+  return {urls: urls, categories: cats}
 }
 
-function updateGridAmenityBubbles() {
-  var andContainer = $('#gridAmenityBubblesAnd')
-  var orContainer = $('#gridAmenityBubblesOr')
-  if(!andContainer.length && !orContainer.length) return
-  var andSelected = ($('#gridAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-  var orSelected = ($('#gridOrAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-  var allSorted = Array.from(_gridAllAmenities).sort()
-  var displayList = getGridDisplayAmenities()
-  var sorted = displayList.length ? allSorted.filter(function(a){ return displayList.indexOf(a) !== -1 }) : allSorted
-  var searchTerm = ($('#gridAmenitySearch').val() || '').toLowerCase()
-  if(searchTerm) sorted = sorted.filter(function(a){ return a.toLowerCase().indexOf(searchTerm) !== -1 })
-  var andHtml = '', orHtml = ''
-  sorted.forEach(function(a) {
-    var idTooltip = _gridAmenityIdMap[a] ? ' title="Airbnb ID: '+_gridAmenityIdMap[a]+'"' : ''
-    var isAnd = andSelected.indexOf(a) !== -1
-    var isOr = orSelected.indexOf(a) !== -1
-    if(isAnd)
-      andHtml += '<span class="amenity-filter-bubble active"'+idTooltip+' onclick="toggleGridAmenityFilter(this,\'and\')" oncontextmenu="moveGridAmenityFilter(event,this,\'and\')">'+a+'</span>'
-    else if(isOr)
-      orHtml += '<span class="amenity-filter-bubble active amenity-or"'+idTooltip+' onclick="toggleGridAmenityFilter(this,\'or\')" oncontextmenu="moveGridAmenityFilter(event,this,\'or\')">'+a+'</span>'
-    else
-      andHtml += '<span class="amenity-filter-bubble"'+idTooltip+' onclick="toggleGridAmenityFilter(this,\'and\')" oncontextmenu="moveGridAmenityFilter(event,this,\'and\')">'+a+'</span>'
+function groupPhotoCategories(cats) {
+  if(!cats) return null
+  var grouped = {}
+  Object.keys(cats).forEach(function(key) {
+    var norm = key.replace(/\s*(image|photo|picture|img|pic)\s*\d+\s*$/i, '').replace(/^\s*(image|photo|picture|img|pic)\s*\d+\s*[-\u2013\u2014:.]?\s*(of\s+)?/i, '').trim()
+    var gkey = norm || key
+    if(!grouped[gkey]) grouped[gkey] = []
+    grouped[gkey] = grouped[gkey].concat(cats[key])
   })
-  andContainer.html(andHtml)
-  orContainer.html(orHtml)
-}
-
-function toggleGridAmenityFilter(el, group) {
-  $(el).toggleClass('active')
-  syncGridAmenityInputs()
-  updateGridAmenityBubbles()
-}
-
-function moveGridAmenityFilter(event, el, fromGroup) {
-  event.preventDefault()
-  var name = $(el).text()
-  var toGroup = fromGroup === 'and' ? 'or' : 'and'
-  var fromInput = toGroup === 'or' ? '#gridAmenities' : '#gridOrAmenities'
-  var toInput = toGroup === 'or' ? '#gridOrAmenities' : '#gridAmenities'
-  var fromList = ($(fromInput).val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-  fromList = fromList.filter(function(a){ return a !== name })
-  $(fromInput).val(fromList.join(','))
-  var toList = ($(toInput).val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-  if(toList.indexOf(name) === -1) toList.push(name)
-  $(toInput).val(toList.join(','))
-  updateGridAmenityBubbles()
-}
-
-function syncGridAmenityInputs() {
-  var andSelected = [], orSelected = []
-  $('#gridAmenityBubblesAnd .amenity-filter-bubble.active').each(function(){ andSelected.push($(this).text()) })
-  $('#gridAmenityBubblesOr .amenity-filter-bubble.active').each(function(){ orSelected.push($(this).text()) })
-  $('#gridAmenities').val(andSelected.join(','))
-  $('#gridOrAmenities').val(orSelected.join(','))
-}
-
-function getGridDisplayAmenities(){
-  return _gridSavedDisplayAmenities
+  return grouped
 }

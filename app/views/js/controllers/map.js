@@ -46,7 +46,8 @@ function initMap(params) {
     });
 
     $('#map').height(function(index, height) {
-      return window.innerHeight - $(this).offset().top - $('.main-footer').outerHeight()
+      var cw = $('.content-wrapper')
+      return cw.innerHeight() - ($(this).offset().top - cw.offset().top + cw.scrollTop())
     })
   }
   else
@@ -54,15 +55,21 @@ function initMap(params) {
     $('#pac-input').remove()
     $('#map').replaceWith(map.getDiv())
     $('#map').height(function(index, height) {
-    return window.innerHeight - $(this).offset().top - $('.main-footer').outerHeight()-40
-  })
+      var cw = $('.content-wrapper')
+      return cw.innerHeight() - ($(this).offset().top - cw.offset().top + cw.scrollTop())
+    })
   }
   //params.forceAllMarkers = true
   getAdsAsync(params, true)
 
   $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
-  
+
   localStorage.setItem('hideMarkers', false)
+
+  // Restore shape filter if it was active before switching views
+  if(hasActiveShapeFilter()) {
+    restoreShapeOnMap()
+  }
 }
 
 function getAdsAsync(params, centerMapLocation=false)
@@ -213,12 +220,32 @@ function mapClearInformationWindow()
   return true
 }*/
 
-function openPhotoGallery(urls)
+function openPhotoGallery(data)
 {
   var html = ''
-  urls.forEach(function(url){
-    html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" loading="lazy" onclick="openPhotoZoom(this.src)">'
-  })
+  // Support both flat array (legacy) and {urls, categories} object
+  var urls, cats
+  if(Array.isArray(data)) {
+    urls = data; cats = null
+  } else {
+    urls = data.urls || []; cats = data.categories
+  }
+
+  if(cats && Object.keys(cats).length) {
+    Object.keys(cats).forEach(function(cat) {
+      html += '<div class="gallery-category">'
+      html += '<h3 class="gallery-cat-title">'+cat+'</h3>'
+      html += '<div class="gallery-cat-grid">'
+      cats[cat].forEach(function(url) {
+        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+      })
+      html += '</div></div>'
+    })
+  } else {
+    urls.forEach(function(url){
+      html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+    })
+  }
   $('#photoGalleryContent').html(html)
   $('#photoGalleryOverlay').fadeIn(200)
   $('body').css('overflow','hidden')
@@ -254,6 +281,31 @@ function clearJobCache()
     alert('Cleared ' + (result.removed || 0) + ' cached listings.')
   })
   return true
+}
+
+var _listingPopupMap = null
+var _listingPopupMarker = null
+
+function openListingMapPopup(lat, lon, title) {
+  $('#listingMapModalTitle').text(title || 'Location')
+  $('#listingMapModal').modal('show')
+  $('#listingMapModal').one('shown.bs.modal', function() {
+    var latLng = new google.maps.LatLng(lat, lon)
+    if(!_listingPopupMap) {
+      _listingPopupMap = new google.maps.Map(document.getElementById('listingMapDiv'), {
+        center: latLng,
+        zoom: 15,
+        mapTypeId: google.maps.MapTypeId.ROADMAP
+      })
+      _listingPopupMarker = new google.maps.Marker({ position: latLng, map: _listingPopupMap, title: title || '' })
+    } else {
+      _listingPopupMap.setCenter(latLng)
+      _listingPopupMap.setZoom(15)
+      _listingPopupMarker.setPosition(latLng)
+      _listingPopupMarker.setTitle(title || '')
+      google.maps.event.trigger(_listingPopupMap, 'resize')
+    }
+  })
 }
 
 function mapResetViewed()

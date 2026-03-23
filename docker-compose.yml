@@ -13,6 +13,10 @@ services:
       - docker-network
     depends_on:
       - mongo
+    shm_size: '2gb'
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     volumes:
       - ./app:/usr/src/app
       - /usr/src/app/node_modules
@@ -44,8 +48,7 @@ services:
 
 networks:
   docker-network:
-    external: true
-    name: docker-network
+    driver: bridge
 
 volumes:
   db-data:

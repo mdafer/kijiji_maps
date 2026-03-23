@@ -3,9 +3,27 @@ ApiStatus = Helpers.ApiStatus
 
 module.exports = {
 	getMarkers: async function(params, authUser, callback) {
-		params.db.get('ads').find(Helpers.query.formatQuery(params)).then((docs) => {
-			return callback({status:ApiStatus.SUCCESS, meta:docs})
-		}).catch((err) => {Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})})//.then(() => db.close())
+		try {
+			var skipJob = params.favoritesOnly === 'true'
+			const query = Helpers.query.formatQuery(params, {skipJobFilter: skipJob})
+			if(skipJob) {
+				const user = await params.db.get('users').findOne({_id: authUser._id})
+				if(!user || !user.favorites || !user.favorites.length)
+					return callback({status: ApiStatus.SUCCESS, meta: []})
+				if(!query.$and) query.$and = []
+				query.$and.push({_id: {$in: user.favorites.map(id => params.db.id(id))}})
+				// Optional multi-search filter
+				if(params.jobIds) {
+					var ids = Array.isArray(params.jobIds) ? params.jobIds : params.jobIds.split(',').map(s => s.trim()).filter(Boolean)
+					if(ids.length) query.$and.push({$or: ids.map(id => ({['jobs.'+id]: {$exists: true}}))})
+				}
+			}
+			const docs = await params.db.get('ads').find(query)
+			return callback({status: ApiStatus.SUCCESS, meta: docs})
+		} catch(err) {
+			Helpers.logger.log(err)
+			return callback({status: ApiStatus.DB_ERROR, meta: err})
+		}
     },
 	getJobAmenities: async function(params, authUser, callback) {
 		try {

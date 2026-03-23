@@ -222,7 +222,7 @@ function searchesfunc()
       `)
       $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data)
       $( "#searchesTBody .delSearchBtn" ).last().data('id', filteredJobs[i].id)
-      $(".BStooltip").tooltip({ trigger: 'hover' })
+      $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
     }
 
     $('.delSearchBtn').on('click', function(event){
@@ -246,15 +246,13 @@ function searchesfunc()
     })
   })
 
-  if(userId)
-    socket.on(userId+'command', function(obj){
-      switch(obj.command)
-      {
-        case 'doneProcAndValid':
-          renderpage('searches')
-        break
-      }
-    });
+  if(userId) {
+    window._searchesSocketHandler = function(obj){
+      if(obj && obj.channel === userId+'command' && obj.command === 'doneProcAndValid')
+        renderpage('searches')
+    }
+    socket.on('all', window._searchesSocketHandler)
+  }
 
   $('#newSearchForm').on('submit', function(event) {
     event.preventDefault();
@@ -273,5 +271,8 @@ function searchesUnload()
   $('#newSearchForm').off('submit')
   $('#editSearchForm').off('submit')
   $('#newSearchPlatform').off('change')
-  socket.removeAllListeners()
+  if(window._searchesSocketHandler) {
+    socket.off('all', window._searchesSocketHandler)
+    window._searchesSocketHandler = null
+  }
 }
