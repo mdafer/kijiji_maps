@@ -10,6 +10,7 @@ var visitedUrls
 var mapJobId
 var _favoriteIds = new Set()
 var _favoritesOnly = false
+var _focusAdId = null
 
 // --- Lazy image loading with preload offset ---
 var _lazyImageObserver = null
@@ -187,6 +188,7 @@ function clearGlobalVars()
 	mapJobId = null
 	_favoriteIds = new Set()
 	_favoritesOnly = false
+	_focusAdId = null
 	_favJobIds = []
 	_shapeFilterGeo = null
 	_drawnShape = null

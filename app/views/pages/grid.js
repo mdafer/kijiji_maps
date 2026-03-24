@@ -88,6 +88,7 @@ function loadGridAds(params) {
     })
     if(_currentSort) _applySort()
     renderGrid()
+    if(_focusAdId) scrollToFocusedAd()
   })
 }
 
@@ -212,7 +213,7 @@ function buildCardHtml(ad) {
     }
   }
 
-  var html = '<div class="grid-card">'
+  var html = '<div class="grid-card" data-adid="'+ad._id+'">'
   html += '  <div class="grid-card-img-wrap">'+imgHtml+'</div>'
   html += '  <div class="grid-card-body">'
   html += '    <div class="grid-card-title" title="'+ad.title+'">'+ad.title+'</div>'
@@ -299,7 +300,7 @@ function buildRowHtml(ad) {
     }
   }
 
-  var html = '<div class="grid-row-item">'
+  var html = '<div class="grid-row-item" data-adid="'+ad._id+'">'
   html += '  <div class="grid-row-header">'
   html += '    <button class="grid-row-collapse-btn" onclick="toggleRowCollapse(this)" title="Collapse/expand"><i class="fa fa-chevron-up"></i></button>'
   html += '    <span class="grid-row-title" title="'+ad.title+'">'+ad.title+'</span>'

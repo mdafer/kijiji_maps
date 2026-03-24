@@ -1,8 +1,8 @@
 function initMap(params) {
-  if(!map || !mapJobId || mapJobId != params.jobId)
+  if(!map || !mapJobId || mapJobId != jobId)
   {
 
-    mapJobId = params.jobId
+    mapJobId = jobId
     map = new google.maps.Map(document.getElementById('map'), {
       center: new google.maps.LatLng(43.5890, -79.6441),
       zoom: 8,
@@ -11,6 +11,10 @@ function initMap(params) {
     infowindow =  new google.maps.InfoWindow({
       disableAutoPan: true,
       content: ''
+    })
+    // Close infowindow when clicking on the map background
+    map.addListener('click', function() {
+      infowindow.close()
     })
     /*Search box*/
     var input = document.getElementById("pac-input")
@@ -80,15 +84,14 @@ function getAdsAsync(params, centerMapLocation=false)
       lastUpdated = moment(MongoDateFromId(adsResult[adsResult.length-1]._id)).tz("America/Toronto").format("YYYY-MM-DD hh:mm a z")
     else
       lastUpdated = "Unknown"
-    const expiredAds = _markers.filter( (el)=>{return !adsResult.find(resAd=>{return resAd.url == el.url})})//expired ads
-    const expiredMarkers = getMarkersFromAds(expiredAds)
-    if(expiredMarkers && expiredMarkers.length)
-      clearMapMarkers(expiredMarkers)//remove expired from map and from _markers
-    const newAds = adsResult.filter( (el)=>{return !_markers.find(marker=>{return marker.url == el.url})})//new ads
-    /*if(params.forceAllMarkers)
-      setMarkersByAds(map, adsResult, centerMapLocation)
-    else*/ if(newAds)
-      setMarkersByAds(map, newAds, centerMapLocation)//add new ads to map and to _markers
+    var resultUrls = new Set(adsResult.map(function(ad){ return ad.url }))
+    var markerUrls = new Set(_markers.map(function(m){ return m.url }))
+    var expiredMarkers = _markers.filter(function(m){ return !resultUrls.has(m.url) })
+    if(expiredMarkers.length)
+      clearMapMarkers(expiredMarkers)
+    var newAds = adsResult.filter(function(ad){ return !markerUrls.has(ad.url) })
+    if(newAds.length)
+      setMarkersByAds(map, newAds, centerMapLocation)
     $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length || 0)
   });
 }
@@ -129,7 +132,8 @@ function clearMapMarkers(markers='all', removeFromGlobalMarkers=true)
   for(let i=0;i<markers.length;i++)
     markers[i].setMap(null)
   if(removeFromGlobalMarkers) {
-    _markers = _markers.filter( (el)=> {return !markers.find(marker=>marker.url ==el.url)} );
+    var removeUrls = new Set(markers.map(function(m){ return m.url }))
+    _markers = _markers.filter(function(el){ return !removeUrls.has(el.url) })
     if(!_markers.length) { _allAmenities = new Set(); _amenityIdMap = {} }
   }
   $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)

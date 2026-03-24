@@ -67,8 +67,39 @@ function buildPopupHtml(ad) {
   html += '<div style="margin:4px 0;display:flex;gap:6px;align-items:center">'
   html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
   html += '<a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+visitUrl+'" target="_blank">'+visitLabel+'</a>'
-  html += '</div></div>'
+  html += '</div>'
+  html += '<button class="btn btn-xs btn-default" style="margin:2px 0;width:100%" onclick="viewInList(\''+ad._id+'\')"><i class="fa fa-list"></i> View in list</button>'
+  html += '</div>'
   return html
+}
+
+function viewInList(adId) {
+  _focusAdId = adId
+  if(typeof switchToGridMode === 'function') {
+    switchToGridMode('rows')
+  }
+}
+
+function scrollToFocusedAd() {
+  if(!_focusAdId) return
+  var adId = _focusAdId
+  _focusAdId = null
+  // Ensure the ad's batch is rendered (it may be beyond the current batch)
+  var idx = _gridAds.findIndex(function(a){ return a._id === adId })
+  if(idx === -1) return
+  while(_gridRenderedCount <= idx) {
+    renderGridBatch()
+  }
+  var $el = $('[data-adid="'+adId+'"]')
+  if(!$el.length) return
+  // Uncollapse if it's a row item that's collapsed
+  if($el.hasClass('collapsed')) $el.removeClass('collapsed')
+  var $cw = $('.content-wrapper')
+  var targetScroll = $cw.scrollTop() + ($el.offset().top - $cw.offset().top) - 4
+  $cw.animate({ scrollTop: targetScroll }, 300)
+  // Brief highlight
+  $el.css('outline', '2px solid #2196F3')
+  setTimeout(function(){ $el.css('outline', '') }, 2000)
 }
 
 function getAdById(id) {
@@ -88,9 +119,10 @@ function setMarkersByAds(map, ads, centerLocation = false) {
     return
   if(centerLocation)
     centerMapLocation(ads[0].lat, ads[0].lon)
+  var visitedSet = new Set(visitedUrls)
   ads.forEach(ad=> {
     let icon ={url:"https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png"}
-    if(visitedUrls.includes(ad.url))
+    if(visitedSet.has(ad.url))
       icon.url = "https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png"
     var marker = new google.maps.Marker({
       position: new google.maps.LatLng(ad.lat, ad.lon),
@@ -108,23 +140,16 @@ function setMarkersByAds(map, ads, centerLocation = false) {
 }
 
 var bindInfoWindow = function(marker, map, infowindow, ad) {
-  function markerClickFunc(){
+  google.maps.event.addListener(marker, 'click', function() {
     infowindow.setContent(buildPopupHtml(ad))
     infowindow.open(map, marker)
     markAsViewed(marker, marker.url)
-    google.maps.event.clearListeners(marker, 'click')
-    google.maps.event.addListener(marker, 'click', function() {
-      infowindow.close(map, marker)
-      google.maps.event.clearListeners(marker, 'click')
-      google.maps.event.addListener(marker, 'click', markerClickFunc)
-    })
-  }
-  google.maps.event.addListener(marker, 'click', markerClickFunc)
+  })
   google.maps.event.addListener(marker, 'dblclick', function() {
-      markAsViewed(marker,this.url)
-      window.open(this.url, '_blank')
-      infowindow.close(map, marker)
-    })
+    markAsViewed(marker, this.url)
+    window.open(this.url, '_blank')
+    infowindow.close()
+  })
 }
 
 function markAsViewed(marker, url)
@@ -144,7 +169,8 @@ function markAsViewed(marker, url)
 function getViewedMarkers(markers=null)
 {
   markers = markers || _markers
-  return markers.filter(marker => {return visitedUrls.includes(marker.url)})
+  var visitedSet = new Set(visitedUrls)
+  return markers.filter(function(marker){ return visitedSet.has(marker.url) })
 }
 
 /*function mapCheckNewAds()
@@ -165,7 +191,8 @@ function getMarkersFromAds(ads)
     ads=[ads]
   if(typeof ads[0] === 'string' || ads[0] instanceof String)
     ads.forEach((ad,index)=>ads[index]={url:ad})
-  return _markers.filter(marker=>{return ads.find(ad=>ad.url==marker.url)})
+  var adUrls = new Set(ads.map(function(ad){ return ad.url }))
+  return _markers.filter(function(marker){ return adUrls.has(marker.url) })
 }
 
 function isTouchScreen(){
@@ -278,13 +305,19 @@ function isInsideShapeFilter(lat, lon) {
   }
 }
 
+var _shapeFilterDebounceTimer = null
+function _debouncedApplyShapeFilter() {
+  if(_shapeFilterDebounceTimer) clearTimeout(_shapeFilterDebounceTimer)
+  _shapeFilterDebounceTimer = setTimeout(applyShapeFilter, 80)
+}
+
 function _bindShapeEditListeners(shape) {
   if(shape.getBounds) {
-    google.maps.event.addListener(shape, 'radius_changed', applyShapeFilter)
-    google.maps.event.addListener(shape, 'center_changed', applyShapeFilter)
+    google.maps.event.addListener(shape, 'radius_changed', _debouncedApplyShapeFilter)
+    google.maps.event.addListener(shape, 'center_changed', _debouncedApplyShapeFilter)
   } else {
-    google.maps.event.addListener(shape.getPath(), 'set_at', applyShapeFilter)
-    google.maps.event.addListener(shape.getPath(), 'insert_at', applyShapeFilter)
+    google.maps.event.addListener(shape.getPath(), 'set_at', _debouncedApplyShapeFilter)
+    google.maps.event.addListener(shape.getPath(), 'insert_at', _debouncedApplyShapeFilter)
   }
 }
 
