@@ -94,4 +94,5 @@ module.exports = {
     },
 }
 
+module.exports.encryptField = encryptField
 module.exports.decryptField = decryptField

@@ -2,7 +2,7 @@ const Helpers = require('../helpers/includes'),
 	eachOfLimit = require('async/eachOfLimit'),
 	axios = require('axios'),
 	{ seedCookies, getBrowser, resolvePageDeps } = require('../helpers/browser'),
-	{ decryptField } = require('../controllers/users')
+	{ decryptField, encryptField } = require('../controllers/users')
 
 // Simple in-memory geocode cache to avoid repeated Nominatim calls
 const geocodeCache = new Map()
@@ -57,7 +57,7 @@ async function saveFbCookies(page, db, userId) {
 			.map(c => c.name + '=' + c.value)
 			.join('; ')
 		if (cookieStr) {
-			await db.get('users').update({ _id: userId }, { $set: { fbCookies: cookieStr, fbCookiesDate: new Date() } })
+			await db.get('users').update({ _id: userId }, { $set: { fbCookiesEnc: encryptField(cookieStr), fbCookiesDate: new Date() } })
 		}
 	} catch(e) {}
 }
@@ -70,7 +70,7 @@ async function restoreFbCookies(page, db, userId, jobId) {
 	if (!db || !userId) return false
 	try {
 		const user = await db.get('users').findOne({ _id: userId })
-		if (!user || !user.fbCookies) return false
+		if (!user || !user.fbCookiesEnc) return false
 
 		// Check cookie age — expire after 30 days
 		if (user.fbCookiesDate) {
@@ -81,8 +81,11 @@ async function restoreFbCookies(page, db, userId, jobId) {
 			}
 		}
 
+		const cookieStr = decryptField(user.fbCookiesEnc)
+		if (!cookieStr) return false
+
 		Helpers.logger.log({ print: 'Restoring saved Facebook session...', channels: jobId + 'jobUpdate' })
-		await seedCookies(user.fbCookies, '.facebook.com')
+		await seedCookies(cookieStr, '.facebook.com')
 
 		// Quick check — navigate to Facebook and see if we're logged in
 		await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 20000 })
