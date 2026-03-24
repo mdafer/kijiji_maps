@@ -25,6 +25,18 @@ module.exports = {
 		if(vars.minBeds)
 			myfilter.$and.push({beds:{$gte:Number(vars.minBeds)}})
 
+		if(vars.minSqMeters)
+			myfilter.$and.push({sqMeters:{$gte:Number(vars.minSqMeters)}})
+
+		if(vars.minParking)
+			myfilter.$and.push({parking:{$gte:Number(vars.minParking)}})
+
+		if(vars.propertyType)
+			myfilter.$and.push({propertyType:{$regex: new RegExp('^' + vars.propertyType + '$', 'i')}})
+
+		if(vars.categorySearch)
+			myfilter.$and.push({categories:{$regex: new RegExp(vars.categorySearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')}})
+
 		if(vars.minPhotos) {
 			let minP = Number(vars.minPhotos)
 			if(minP > 0)

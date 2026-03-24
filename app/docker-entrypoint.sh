@@ -12,7 +12,9 @@ resolve_doh() {
 }
 
 echo "Resolving external hostnames via DoH..."
-for host in www.airbnb.com airbnb.com www.kijiji.ca kijiji.ca; do
+# Resolve hosts via DoH for /etc/hosts (Docker Desktop for Windows blocks UDP/53).
+# Chromium also has DoH flags, but needs /etc/hosts for the DoH provider itself to bootstrap.
+for host in www.airbnb.com airbnb.com www.kijiji.ca kijiji.ca nominatim.openstreetmap.org 1.1.1.1.dns one.one.one.one www.facebook.com facebook.com m.facebook.com static.xx.fbcdn.net connect.facebook.net www.fbsbx.com; do
   ip=$(resolve_doh "$host")
   if [ -n "$ip" ]; then
     echo "$ip $host" >> /etc/hosts

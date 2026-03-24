@@ -14,20 +14,25 @@ var _savedDisplayAmenities = []
 
 function buildPopupHtml(ad) {
   var isAirbnb = ad.platform === 'airbnb'
-  var visitLabel = isAirbnb ? 'Visit on Airbnb' : 'Visit on Kijiji'
+  var isFacebook = ad.platform === 'facebook'
+  var visitLabel = isAirbnb ? 'Visit on Airbnb' : isFacebook ? 'Visit on Facebook' : 'Visit on Kijiji'
+  var visitUrl = isFacebook ? 'https://www.facebook.com/marketplace/item/' + ad.facebookId + '/' : ad.url
   var html = '<div style="max-width:220px">'
 
-  if(isAirbnb && ad.picture_url)
+  if(ad.picture_url)
     html += '<img src="'+ad.picture_url+'" style="max-width:200px;max-height:150px;border-radius:4px;margin-bottom:5px" referrerpolicy="no-referrer">'
 
   html += '<h4>'+ad.title+'</h4><h4>$'+ad.price+'</h4>'
 
-  if(isAirbnb) {
+  if(isAirbnb || isFacebook) {
     var parts = []
     if(ad.bedrooms) parts.push(ad.bedrooms + ' bd')
     if(ad.beds) parts.push(ad.beds + ' beds')
     if(ad.bathrooms) parts.push(ad.bathrooms + ' ba')
     if(parts.length) html += '<p style="margin:2px 0;font-size:12px">'+parts.join(' &middot; ')+'</p>'
+
+    if(ad.categories && ad.categories.length)
+      html += '<p style="margin:2px 0;font-size:11px;color:#666">'+ad.categories.join(', ')+'</p>'
 
     if(ad.amenities && ad.amenities.length) {
       var displayList = getDisplayAmenities()
@@ -41,31 +46,38 @@ function buildPopupHtml(ad) {
       if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
     }
 
+    // Photo gallery — use facebookId or airbnbId as lookup key
+    var adLookupId = ad.airbnbId || ad.facebookId
     var pics = ad.picture_urls || []
-    if(pics.length > 1)
-      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdPhotosData(\''+ad.airbnbId+'\'))">Photos ('+pics.length+')</button>'
-    
-    if(ad.availability)
-      html += '<button class="btn btn-xs btn-warning" style="margin:4px 0;width:100%" onclick="openAvailabilityCalendar(\''+ad._id+'\')"><i class="fa fa-calendar"></i> Availability (12m)</button>'
-    else
-      html += '<button class="btn btn-xs btn-default" style="margin:4px 0;width:100%;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
+    if(pics.length > 1 && adLookupId)
+      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdPhotosData(\''+adLookupId+'\'))">Photos ('+pics.length+')</button>'
+
+    if(isAirbnb) {
+      if(ad.availability)
+        html += '<button class="btn btn-xs btn-warning" style="margin:4px 0;width:100%" onclick="openAvailabilityCalendar(\''+ad._id+'\')"><i class="fa fa-calendar"></i> Availability (12m)</button>'
+      else
+        html += '<button class="btn btn-xs btn-default" style="margin:4px 0;width:100%;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
+    }
+
+    if(ad.seller)
+      html += '<p style="margin:2px 0;font-size:11px;color:#888">Seller: '+ad.seller+'</p>'
   }
 
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
   html += '<div style="margin:4px 0;display:flex;gap:6px;align-items:center">'
   html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
-  html += '<a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+ad.url+'" target="_blank">'+visitLabel+'</a>'
+  html += '<a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+visitUrl+'" target="_blank">'+visitLabel+'</a>'
   html += '</div></div>'
   return html
 }
 
-function getAdById(airbnbId) {
-  var m = _markers.find(function(mk){ return mk.adData && mk.adData.airbnbId === airbnbId })
+function getAdById(id) {
+  var m = _markers.find(function(mk){ return mk.adData && (mk.adData.airbnbId === id || mk.adData.facebookId === id) })
   return m ? m.adData : null
 }
 
-function getAdPhotosData(airbnbId) {
-  var ad = getAdById(airbnbId)
+function getAdPhotosData(id) {
+  var ad = getAdById(id)
   if(!ad) return {urls: [], categories: null}
   var urls = (ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad.picture_url ? [ad.picture_url] : [])
   return {urls: urls, categories: typeof groupPhotoCategories === 'function' ? groupPhotoCategories(ad.photo_categories) : ad.photo_categories}

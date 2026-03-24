@@ -20,6 +20,9 @@ const express = require('express'),
 // Shared state for manual response flow (soft-block bypass)
 Helpers.pendingManualResponses = new Map() // requestId -> {resolve, reject}
 
+// Active CAPTCHA sessions — requestId -> { page }
+Helpers.captchaSessions = new Map()
+
 io.on('connection', (socket) => {
 	socket.on('manualResponse', (data) => {
 		const pending = Helpers.pendingManualResponses.get(data.requestId)
@@ -33,6 +36,12 @@ io.on('connection', (socket) => {
 		if (pending) {
 			Helpers.pendingManualResponses.delete(data.requestId)
 			pending.reject(new Error(data.error || 'Manual response error'))
+		}
+	})
+	socket.on('captchaClick', async (data) => {
+		const session = Helpers.captchaSessions.get(data.requestId)
+		if (session && session.page) {
+			try { await session.page.mouse.click(data.x, data.y) } catch(e) {}
 		}
 	})
 })

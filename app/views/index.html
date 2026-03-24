@@ -501,6 +501,119 @@
     $('#manualPasteRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#856404"><strong>Skipped — will retry after delay</strong></div></div>')
   }
 
+  // Facebook 2FA flow — prompt user for verification code
+  socket.on('needFb2FA', function(data) {
+    window._pendingFb2FARequestId = data.requestId
+    if (!$('#informationModal').hasClass('in')) {
+      $('#informationModal').modal('show')
+    }
+    var retryCount = 0
+    var appendInterval = setInterval(function() {
+      var $messages = $('#messages')
+      if ($messages.length > 0) {
+        clearInterval(appendInterval)
+        if ($('#fb2FARow').length > 0) return
+        var row = '<div id="fb2FARow" class="row" style="background:#d1ecf1;padding:8px;margin:10px 0;border-radius:4px;border:1px solid #bee5eb;color:#0c5460">' +
+          '<div class="col-xs-12">' +
+            '<div style="margin-bottom:8px"><strong><i class="fa fa-lock"></i> Facebook Verification Code Required</strong></div>' +
+            'Facebook sent a verification code to your phone or authenticator app. Enter it below:' +
+            '<div style="margin-top:8px;display:flex;gap:6px;align-items:center">' +
+              '<input id="fb2FAInput" type="text" class="form-control" placeholder="Enter 6-digit code" maxlength="8" style="flex:0 0 180px;font-size:16px;letter-spacing:3px;text-align:center;font-weight:bold;border:1px solid #bee5eb">' +
+            '</div>' +
+            '<div style="margin-top:8px">' +
+              '<button class="btn btn-primary btn-sm" onclick="submitFb2FA()">Submit Code</button> ' +
+              '<button class="btn btn-default btn-sm" onclick="skipFb2FA()">Skip Login</button> ' +
+              '<span id="fb2FAError" style="color:#a94442;margin-left:8px;font-weight:600"></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+        $messages.append(row)
+        $messages.scrollTop($messages[0].scrollHeight)
+        $('#fb2FAInput').focus()
+        // Allow Enter key to submit
+        $('#fb2FAInput').on('keydown', function(e) {
+          if (e.which === 13) submitFb2FA()
+        })
+      } else if (retryCount++ > 20) {
+        clearInterval(appendInterval)
+      }
+    }, 100)
+  })
+
+  window.submitFb2FA = function() {
+    var code = ($('#fb2FAInput').val() || '').trim()
+    if (!code) { $('#fb2FAError').text('Enter the verification code'); return }
+    if (!/^\d{4,8}$/.test(code)) { $('#fb2FAError').text('Code should be 4-8 digits'); return }
+    socket.emit('manualResponse', { requestId: window._pendingFb2FARequestId, json: code })
+    $('#fb2FARow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#3c763d"><strong><i class="fa fa-check"></i> Verification code submitted — waiting for Facebook...</strong></div></div>')
+  }
+
+  window.skipFb2FA = function() {
+    socket.emit('manualResponse', { requestId: window._pendingFb2FARequestId, json: 'skip' })
+    $('#fb2FARow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#856404"><strong>Login skipped — continuing without authentication</strong></div></div>')
+  }
+
+  // Facebook CAPTCHA flow — interactive remote screen
+  socket.on('needCaptcha', function(data) {
+    window._pendingCaptchaRequestId = data.requestId
+    if (!$('#informationModal').hasClass('in')) {
+      $('#informationModal').modal('show')
+    }
+    var retryCount = 0
+    var appendInterval = setInterval(function() {
+      var $messages = $('#messages')
+      if ($messages.length > 0) {
+        clearInterval(appendInterval)
+        if ($('#captchaRow').length > 0) return
+        var row = '<div id="captchaRow" class="row" style="background:#fff3cd;padding:8px;margin:10px 0;border-radius:4px;border:1px solid #ffeeba;color:#856404">' +
+          '<div class="col-xs-12">' +
+            '<div style="margin-bottom:8px"><strong><i class="fa fa-shield"></i> Facebook Security Check</strong></div>' +
+            'Click on the image below to solve the CAPTCHA:' +
+            '<div style="margin-top:8px;text-align:center;position:relative;cursor:crosshair">' +
+              '<img id="captchaImg" src="" style="max-width:100%;border:1px solid #ccc;border-radius:4px">' +
+            '</div>' +
+            '<div style="margin-top:8px">' +
+              '<button class="btn btn-success btn-sm" onclick="captchaDone()">Done</button> ' +
+              '<button class="btn btn-default btn-sm" onclick="captchaSkip()">Skip Login</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+        $messages.append(row)
+        $messages.scrollTop($messages[0].scrollHeight)
+
+        // Forward clicks on the image to the backend as page coordinates
+        $('#captchaImg').on('click', function(e) {
+          var rect = this.getBoundingClientRect()
+          var scaleX = 1920 / rect.width
+          var scaleY = 1080 / rect.height
+          var x = Math.round((e.clientX - rect.left) * scaleX)
+          var y = Math.round((e.clientY - rect.top) * scaleY)
+          socket.emit('captchaClick', { requestId: window._pendingCaptchaRequestId, x: x, y: y })
+        })
+      } else if (retryCount++ > 20) {
+        clearInterval(appendInterval)
+      }
+    }, 100)
+  })
+
+  // Receive screenshot frames from backend
+  socket.on('captchaFrame', function(data) {
+    if (data.requestId === window._pendingCaptchaRequestId) {
+      var img = document.getElementById('captchaImg')
+      if (img) img.src = 'data:image/jpeg;base64,' + data.image
+    }
+  })
+
+  window.captchaDone = function() {
+    socket.emit('manualResponse', { requestId: window._pendingCaptchaRequestId, json: 'done' })
+    $('#captchaRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#3c763d"><strong><i class="fa fa-check"></i> CAPTCHA submitted — continuing login...</strong></div></div>')
+  }
+
+  window.captchaSkip = function() {
+    socket.emit('manualResponse', { requestId: window._pendingCaptchaRequestId, json: 'skip' })
+    $('#captchaRow').replaceWith('<div class="row"><div class="col-xs-12" style="color:#856404"><strong>Login skipped — continuing without authentication</strong></div></div>')
+  }
+
   $(function () {
     renderpage();
   });

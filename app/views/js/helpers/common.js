@@ -363,7 +363,7 @@ function parseQueryParams(query) {
 }
 
 // --- Persistent settings (localStorage) ---
-var _persistKeys = ['fromPrice','toPrice','fromDate','availableFrom','availableTo','searchText','searchTitleOnly','minBedrooms','minBathrooms','minBeds','minPhotos','amenities','orAmenities']
+var _persistKeys = ['fromPrice','toPrice','fromDate','availableFrom','availableTo','searchText','searchTitleOnly','minBedrooms','minBathrooms','minBeds','minSqMeters','minParking','propertyType','categorySearch','minPhotos','amenities','orAmenities']
 
 function saveFilters() {
 	var filters = {}

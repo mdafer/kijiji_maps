@@ -1,7 +1,33 @@
 const Helpers = require('../helpers/includes'),
 	eachOfLimit = require('async/eachOfLimit'),
-	{ seedCookies, getBrowser } = require('../helpers/browser'),
+	axios = require('axios'),
+	{ seedCookies, getBrowser, resolvePageDeps } = require('../helpers/browser'),
 	{ decryptField } = require('../controllers/users')
+
+// Simple in-memory geocode cache to avoid repeated Nominatim calls
+const geocodeCache = new Map()
+
+async function geocodeLocation(locationText) {
+	if (!locationText) return { lat: 0, lon: 0 }
+	const cacheKey = locationText.toLowerCase().trim()
+	if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey)
+
+	try {
+		const resp = await axios.get('https://nominatim.openstreetmap.org/search', {
+			params: { q: locationText, format: 'json', limit: 1 },
+			headers: { 'User-Agent': 'KijijiMaps/1.0' },
+			timeout: 10000
+		})
+		if (resp.data && resp.data.length > 0) {
+			const result = { lat: parseFloat(resp.data[0].lat) || 0, lon: parseFloat(resp.data[0].lon) || 0 }
+			geocodeCache.set(cacheKey, result)
+			return result
+		}
+	} catch(e) {}
+	const empty = { lat: 0, lon: 0 }
+	geocodeCache.set(cacheKey, empty)
+	return empty
+}
 
 const requestDelay = () => Number(process.env.FB_REQUEST_DELAY_MS) || 3000
 const detailDelay = () => Number(process.env.FB_DETAIL_DELAY_MS) || 1500
@@ -20,14 +46,70 @@ function humanDelay() {
 }
 
 /**
+ * Save browser cookies to the user record for reuse across sessions.
+ */
+async function saveFbCookies(page, db, userId) {
+	if (!db || !userId) return
+	try {
+		const cookies = await page.cookies()
+		const cookieStr = cookies
+			.filter(c => c.domain.includes('facebook.com') || c.domain.includes('fbsbx.com'))
+			.map(c => c.name + '=' + c.value)
+			.join('; ')
+		if (cookieStr) {
+			await db.get('users').update({ _id: userId }, { $set: { fbCookies: cookieStr, fbCookiesDate: new Date() } })
+		}
+	} catch(e) {}
+}
+
+/**
+ * Try to restore saved cookies and check if they're still valid.
+ * Returns true if session is still active.
+ */
+async function restoreFbCookies(page, db, userId, jobId) {
+	if (!db || !userId) return false
+	try {
+		const user = await db.get('users').findOne({ _id: userId })
+		if (!user || !user.fbCookies) return false
+
+		// Check cookie age — expire after 30 days
+		if (user.fbCookiesDate) {
+			const age = Date.now() - new Date(user.fbCookiesDate).getTime()
+			if (age > 30 * 24 * 60 * 60 * 1000) {
+				Helpers.logger.log({ print: 'Saved Facebook cookies expired (>30 days)', channels: jobId + 'jobUpdate' })
+				return false
+			}
+		}
+
+		Helpers.logger.log({ print: 'Restoring saved Facebook session...', channels: jobId + 'jobUpdate' })
+		await seedCookies(user.fbCookies, '.facebook.com')
+
+		// Quick check — navigate to Facebook and see if we're logged in
+		await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 20000 })
+		await new Promise(r => setTimeout(r, 2000))
+		const loggedIn = await page.evaluate(() => {
+			return document.cookie.includes('c_user') || !!document.querySelector('a[href*="/marketplace"]')
+		})
+		if (loggedIn) {
+			Helpers.logger.log({ print: 'Facebook session restored from saved cookies', channels: jobId + 'jobUpdate' })
+			return true
+		}
+		Helpers.logger.log({ print: 'Saved Facebook cookies no longer valid', channels: jobId + 'jobUpdate' })
+		return false
+	} catch(e) {
+		return false
+	}
+}
+
+/**
  * Log into Facebook using Puppeteer with email/password.
  * Returns true if login succeeded, false otherwise.
  */
-async function loginWithCredentials(page, email, password, jobId) {
+async function loginWithCredentials(page, email, password, jobId, db, userId) {
 	try {
 		Helpers.logger.log({ print: 'Logging into Facebook...', channels: jobId + 'jobUpdate' })
-		await page.goto('https://www.facebook.com/login', { waitUntil: 'networkidle2', timeout: 30000 })
-		await new Promise(r => setTimeout(r, 2000))
+		await page.goto('https://www.facebook.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 })
+		await new Promise(r => setTimeout(r, 3000))
 
 		// Accept cookie consent if present
 		try {
@@ -35,14 +117,21 @@ async function loginWithCredentials(page, email, password, jobId) {
 			if (cookieBtn) { await cookieBtn.click(); await new Promise(r => setTimeout(r, 1000)) }
 		} catch(e) {}
 
-		// Fill in credentials
-		await page.waitForSelector('#email', { timeout: 10000 })
-		await page.type('#email', email, { delay: 50 + Math.random() * 80 })
+		// Fill in credentials — try multiple selectors for resilience
+		const emailSelector = await page.waitForSelector('#email, input[name="email"], input[type="email"]', { timeout: 15000 })
+		await emailSelector.type(email, { delay: 50 + Math.random() * 80 })
 		await new Promise(r => setTimeout(r, 300 + Math.random() * 500))
-		await page.type('#pass', password, { delay: 50 + Math.random() * 80 })
+		const passField = await page.$('#pass, input[name="pass"], input[type="password"]')
+		await passField.type(password, { delay: 50 + Math.random() * 80 })
 		await new Promise(r => setTimeout(r, 300 + Math.random() * 500))
-		await page.click('[name="login"], #loginbutton, button[type="submit"]')
-		await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {})
+		// Submit login — try clicking a button, fall back to pressing Enter
+		const loginBtn = await page.$('[name="login"], #loginbutton, button[type="submit"], [data-testid="royal_login_button"], button[id="loginbutton"]')
+		if (loginBtn) {
+			await loginBtn.click()
+		} else {
+			await passField.press('Enter')
+		}
+		await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
 		await new Promise(r => setTimeout(r, 3000))
 
 		// Check if login succeeded — look for the marketplace link or user menu
@@ -54,14 +143,192 @@ async function loginWithCredentials(page, email, password, jobId) {
 
 		if (loggedIn) {
 			Helpers.logger.log({ print: 'Facebook login successful', channels: jobId + 'jobUpdate' })
+			await saveFbCookies(page, db, userId)
 			return true
 		}
 
-		// Check for checkpoint/2FA
+		// Check for checkpoint/CAPTCHA/2FA
 		const pageText = await page.evaluate(() => document.body.innerText)
-		if (/two-factor|confirm your identity|security check|checkpoint/i.test(pageText)) {
-			Helpers.logger.log({ print: 'Facebook requires 2FA or security check — please log in manually and provide FB_COOKIES in .env instead', channels: jobId + 'jobWarning' })
-			return false
+
+		// Arkose Labs CAPTCHA — stream screenshots to frontend so user can solve it
+		if (/arkose|matchkey|funcaptcha/i.test(pageText)) {
+			// Dynamically resolve any DNS dependencies the CAPTCHA page needs, then reload
+			for (let attempt = 0; attempt < 3; attempt++) {
+				const newHosts = await resolvePageDeps(page)
+				if (newHosts.length === 0) break
+				Helpers.logger.log({ print: 'Resolved DNS for: ' + newHosts.join(', '), channels: jobId + 'jobUpdate' })
+				await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+				await new Promise(r => setTimeout(r, 3000))
+			}
+
+			Helpers.logger.log({ print: 'Facebook CAPTCHA detected — solve it in the info panel below', channels: jobId + 'jobUpdate' })
+
+			const requestId = Math.random().toString(36).slice(2)
+			Helpers.captchaSessions.set(requestId, { page })
+			Helpers.io.emit('needCaptcha', { requestId, jobId })
+
+			try {
+				const solved = await new Promise((resolve, reject) => {
+					const timeout = setTimeout(() => {
+						Helpers.pendingManualResponses.delete(requestId)
+						reject(new Error('CAPTCHA timeout (5 min)'))
+					}, 300000)
+					Helpers.pendingManualResponses.set(requestId, {
+						resolve: (val) => { clearTimeout(timeout); resolve(val) },
+						reject: (err) => { clearTimeout(timeout); reject(err) }
+					})
+
+					// Stream screenshots to the frontend
+					const sendFrame = async () => {
+						try {
+							const screenshot = await page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 70 })
+							Helpers.io.emit('captchaFrame', { requestId, image: screenshot })
+						} catch(e) {}
+					}
+					sendFrame() // send first frame immediately
+					const frameInterval = setInterval(sendFrame, 600)
+
+					// Also store interval so we can clean up
+					Helpers.captchaSessions.get(requestId).frameInterval = frameInterval
+				})
+
+				if (solved === 'skip') {
+					Helpers.logger.log({ print: 'CAPTCHA skipped by user', channels: jobId + 'jobWarning' })
+					return false
+				}
+
+				// User indicated CAPTCHA is solved — check if we're past the checkpoint
+				await new Promise(r => setTimeout(r, 2000))
+				const postCaptchaText = await page.evaluate(() => document.body.innerText)
+				if (!/arkose|matchkey|funcaptcha/i.test(postCaptchaText)) {
+					Helpers.logger.log({ print: 'CAPTCHA solved — continuing login', channels: jobId + 'jobUpdate' })
+					// Check if we're now logged in or need to continue
+					const loggedIn = await page.evaluate(() => {
+						return document.cookie.includes('c_user') || !!document.querySelector('a[href*="/marketplace"]')
+					})
+					if (loggedIn) {
+						Helpers.logger.log({ print: 'Facebook login successful after CAPTCHA', channels: jobId + 'jobUpdate' })
+						await saveFbCookies(page, db, userId)
+						return true
+					}
+					// May still need 2FA after CAPTCHA — fall through to 2FA check below
+				} else {
+					Helpers.logger.log({ print: 'CAPTCHA may not be solved yet — continuing anyway', channels: jobId + 'jobWarning' })
+					return false
+				}
+			} catch(e) {
+				Helpers.logger.log({ print: 'CAPTCHA error: ' + e.message, channels: jobId + 'jobWarning' })
+				return false
+			} finally {
+				const session = Helpers.captchaSessions.get(requestId)
+				if (session && session.frameInterval) clearInterval(session.frameInterval)
+				Helpers.captchaSessions.delete(requestId)
+			}
+		}
+
+		if (/two-factor|code.*sent|enter.*code|verification code|approvals_code/i.test(pageText)) {
+			Helpers.logger.log({ print: 'Facebook requires a verification code', channels: jobId + 'jobUpdate' })
+
+			// Ask frontend for the 2FA code
+			const requestId = Math.random().toString(36).slice(2)
+			try {
+				const code = await new Promise((resolve, reject) => {
+					const timeout = setTimeout(() => {
+						Helpers.pendingManualResponses.delete(requestId)
+						reject(new Error('2FA code timeout (3 min)'))
+					}, 180000)
+					Helpers.pendingManualResponses.set(requestId, {
+						resolve: (val) => { clearTimeout(timeout); resolve(val) },
+						reject: (err) => { clearTimeout(timeout); reject(err) }
+					})
+					Helpers.io.emit('needFb2FA', { requestId, jobId })
+				})
+
+				if (!code || code === 'skip') {
+					Helpers.logger.log({ print: '2FA skipped by user', channels: jobId + 'jobWarning' })
+					return false
+				}
+
+				// Try to find the code input — wait for it to appear
+				let codeInput = null
+				try {
+					codeInput = await page.waitForSelector(
+						'input[name="approvals_code"], input[id="approvals_code"], ' +
+						'input[autocomplete="one-time-code"], input[inputmode="numeric"], ' +
+						'input[aria-label*="code" i], input[aria-label*="Code" i], ' +
+						'input[placeholder*="code" i], input[placeholder*="Code" i]',
+						{ timeout: 5000 }
+					)
+				} catch(e) {
+					// Fallback: pick the first visible text/tel/number input that isn't email/password
+					codeInput = await page.evaluateHandle(() => {
+						const inputs = Array.from(document.querySelectorAll('input'))
+						return inputs.find(i =>
+							['text', 'tel', 'number', ''].includes(i.type) &&
+							i.offsetParent !== null &&
+							i.name !== 'email' && i.name !== 'pass'
+						) || null
+					})
+					// evaluateHandle returns a JSHandle; unwrap to null if no element
+					const isNull = await codeInput.evaluate(el => el === null).catch(() => true)
+					if (isNull) codeInput = null
+				}
+
+				if (codeInput) {
+					Helpers.logger.log({ print: 'Found 2FA input — entering code...', channels: jobId + 'jobUpdate' })
+					await codeInput.click({ clickCount: 3 }) // select any existing text
+					await codeInput.type(code.trim(), { delay: 50 + Math.random() * 80 })
+					await new Promise(r => setTimeout(r, 500))
+					// Submit the code — try button first, then Enter
+					const submitBtn = await page.$('button[type="submit"], #checkpointSubmitButton, [name="submit[Continue]"], button[id*="submit"], div[role="button"][tabindex="0"]')
+					if (submitBtn) {
+						await submitBtn.click()
+					} else {
+						await codeInput.press('Enter')
+					}
+					await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+					await new Promise(r => setTimeout(r, 3000))
+
+					// Check login success — loop through possible follow-up screens (device approval, etc.)
+					for (let step = 0; step < 3; step++) {
+						const loggedIn = await page.evaluate(() => {
+							return !!document.querySelector('[aria-label="Facebook"], [aria-label="Your profile"]')
+								|| document.cookie.includes('c_user')
+								|| !!document.querySelector('a[href*="/marketplace"]')
+						})
+						if (loggedIn) {
+							Helpers.logger.log({ print: 'Facebook login successful after 2FA', channels: jobId + 'jobUpdate' })
+							await saveFbCookies(page, db, userId)
+							return true
+						}
+						// Try clicking any "Continue" / "This was me" type buttons
+						const nextBtn = await page.$('button[type="submit"], [name="submit[Continue]"], [name="submit[This was me]"], div[role="button"][tabindex="0"]')
+						if (nextBtn) {
+							Helpers.logger.log({ print: '2FA follow-up step ' + (step + 1) + ' — clicking continue...', channels: jobId + 'jobUpdate' })
+							await nextBtn.click()
+							await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {})
+							await new Promise(r => setTimeout(r, 2000))
+						} else {
+							break
+						}
+					}
+
+					const finalCheck = await page.evaluate(() => {
+						return document.cookie.includes('c_user') || !!document.querySelector('a[href*="/marketplace"]')
+					})
+					if (finalCheck) {
+						Helpers.logger.log({ print: 'Facebook login successful after 2FA', channels: jobId + 'jobUpdate' })
+						return true
+					}
+				} else {
+					Helpers.logger.log({ print: '2FA: could not find code input field on page', channels: jobId + 'jobWarning' })
+				}
+				Helpers.logger.log({ print: '2FA verification may have failed — continuing anyway', channels: jobId + 'jobWarning' })
+				return false
+			} catch(e) {
+				Helpers.logger.log({ print: '2FA prompt error: ' + e.message, channels: jobId + 'jobWarning' })
+				return false
+			}
 		}
 
 		Helpers.logger.log({ print: 'Facebook login may have failed — continuing anyway', channels: jobId + 'jobWarning' })
@@ -123,9 +390,9 @@ async function extractListingsFromPage(page) {
 			let price = 0
 			let title = ''
 			for (const t of texts) {
-				if (!price && /^\$[\d,.]+/.test(t)) {
+				if (!price && /^(?:R\$|CA\$|C\s?\$|\$|€|£)\s?[\d,.]+/.test(t)) {
 					price = parseFloat(t.replace(/[^0-9.]/g, '')) || 0
-				} else if (!title && t.length > 3 && !/^\$/.test(t)) {
+				} else if (!title && t.length > 3 && !/^(?:R\$|CA\$|C\s?\$|\$|€|£)/.test(t)) {
 					title = t
 				}
 			}
@@ -152,7 +419,7 @@ async function fetchListingDetails(listingId) {
 			Object.defineProperty(navigator, 'webdriver', { get: () => false })
 		})
 		const url = 'https://www.facebook.com/marketplace/item/' + listingId + '/'
-		await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+		await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
 		// Wait a moment for dynamic content
 		await new Promise(r => setTimeout(r, 2000))
 
@@ -165,86 +432,178 @@ async function fetchListingDetails(listingId) {
 				lat: 0,
 				lon: 0,
 				picture_urls: [],
-				seller: ''
+				seller: '',
+				category: '',
+				propertyType: '',
+				bedrooms: 0,
+				bathrooms: 0,
+				sqMeters: 0,
+				parking: 0
 			}
 
-			// Title — often the first large heading on the page
-			const headings = document.querySelectorAll('h1, [role="heading"][aria-level="1"]')
-			if (headings.length) result.title = (headings[0].textContent || '').trim()
+			// Title — h1 heading
+			const h1 = document.querySelector('h1')
+			if (h1) result.title = (h1.textContent || '').trim()
 
-			// All visible text spans — scan for price, location, description
+			// Price — find first span with a non-zero currency value
 			const allSpans = document.querySelectorAll('span')
-			const spanTexts = []
-			allSpans.forEach(s => {
+			for (const s of allSpans) {
 				const t = (s.textContent || '').trim()
-				if (t) spanTexts.push(t)
-			})
-
-			// Price
-			for (const t of spanTexts) {
-				if (/^\$[\d,.]+/.test(t) || /^CA\$[\d,.]+/.test(t) || /^C\s?\$[\d,.]+/.test(t)) {
-					result.price = parseFloat(t.replace(/[^0-9.]/g, '')) || 0
-					break
+				if (/^(?:R\$|CA\$|C\s?\$|\$|€|£)\s?[\d,.]+$/.test(t) || /^[\d,.]+\s?(?:€|£|kr|zł)$/.test(t)) {
+					const val = parseFloat(t.replace(/[^0-9.]/g, '')) || 0
+					if (val > 0) { result.price = val; break }
 				}
 			}
 
-			// Description — look for the listing description container
-			// Facebook typically places description in a div after the price/title area
-			const descEls = document.querySelectorAll('[data-testid="marketplace_listing_description"], [class*="description"]')
+			// Location — try role="listitem" with location pin SVG first
+			const LOCATION_PIN_PATH = 'M10 .5A7.5'
+			const listItems = document.querySelectorAll('[role="listitem"]')
+			for (const item of listItems) {
+				const text = (item.textContent || '').trim()
+				if (text.length < 3) continue
+				const svg = item.querySelector('svg')
+				if (!svg) continue
+				const pathD = svg.querySelector('path')?.getAttribute('d') || ''
+				if (pathD.startsWith(LOCATION_PIN_PATH)) {
+					result.location = text
+					break
+				}
+			}
+			// Fallback: some listing types have no listItems — scan all spans
+			// for text near a location pin SVG anywhere on the page
+			if (!result.location) {
+				document.querySelectorAll('svg').forEach(svg => {
+					if (result.location) return
+					const pathD = svg.querySelector('path')?.getAttribute('d') || ''
+					if (pathD.startsWith(LOCATION_PIN_PATH)) {
+						// Get the text from the nearest sibling/parent container
+						const container = svg.closest('div')
+						if (container) {
+							const text = container.textContent.trim()
+							if (text.length > 2 && text.length < 80) result.location = text
+						}
+					}
+				})
+			}
+			// Last fallback: look for "Listed in <location>" pattern in page text
+			if (!result.location) {
+				for (const s of allSpans) {
+					const t = (s.textContent || '').trim()
+					if (/^listed\s+in\s+/i.test(t)) {
+						result.location = t.replace(/^listed\s+in\s+/i, '').trim()
+						break
+					}
+					// Location-like text: "City, State" pattern
+					if (!result.location && /^[A-Z\u00C0-\u024F][\w\s\u00C0-\u024F-]+,\s*[A-Z]{2}$/.test(t)) {
+						result.location = t
+					}
+				}
+			}
+
+			// Category, property details — scan all spans for known patterns
+			const spanTexts = []
+			allSpans.forEach(s => { const t = (s.textContent || '').trim(); if (t) spanTexts.push(t) })
+
+			// Category: "Home sales", "Property rentals", etc. — usually a link near the price
+			const categoryLinks = document.querySelectorAll('a[href*="/marketplace/"][href*="property"], a[href*="/marketplace/"][href*="sale"], a[href*="/marketplace/"][href*="rental"]')
+			if (categoryLinks.length) result.category = (categoryLinks[0].textContent || '').trim()
+
+			// Beds · baths pattern: "2 beds · 3 baths"
+			for (const t of spanTexts) {
+				const bedMatch = t.match(/(\d+)\s*beds?/i)
+				const bathMatch = t.match(/(\d+)\s*baths?/i)
+				if (bedMatch) result.bedrooms = parseInt(bedMatch[1]) || 0
+				if (bathMatch) result.bathrooms = parseInt(bathMatch[1]) || 0
+				if (bedMatch || bathMatch) break
+			}
+
+			// Square meters: "92 square meters" or "67 m²"
+			for (const t of spanTexts) {
+				const sqMatch = t.match(/(\d+)\s*(?:square\s*met|m²|sq\s*m)/i)
+				if (sqMatch) { result.sqMeters = parseInt(sqMatch[1]) || 0; break }
+			}
+
+			// Parking: "2 parking spaces"
+			for (const t of spanTexts) {
+				const parkMatch = t.match(/(\d+)\s*parking/i)
+				if (parkMatch) { result.parking = parseInt(parkMatch[1]) || 0; break }
+			}
+
+			// Property type: "Apartment", "House", "Condo", etc.
+			const propertyTypes = ['apartment', 'house', 'condo', 'townhouse', 'studio', 'loft', 'villa', 'duplex', 'flat', 'room']
+			for (const t of spanTexts) {
+				const lower = t.toLowerCase().trim()
+				if (propertyTypes.includes(lower)) { result.propertyType = t; break }
+			}
+
+			// Description
+			const descEls = document.querySelectorAll('[data-testid="marketplace_listing_description"]')
 			if (descEls.length) {
 				result.description = (descEls[0].textContent || '').trim()
 			} else {
-				// Fallback: find the longest text block that isn't the title
 				let longest = ''
 				allSpans.forEach(s => {
 					const t = (s.textContent || '').trim()
-					if (t.length > longest.length && t !== result.title && t.length > 30) {
+					if (t.length > longest.length && t !== result.title && t.length > 30
+						&& !t.includes(result.location) && !/^(?:R\$|CA\$|\$|€|£)/.test(t)) {
 						longest = t
 					}
 				})
 				if (longest) result.description = longest
 			}
 
-			// Location text — often contains city name near "Listed in" or similar
-			for (const t of spanTexts) {
-				if (/listed\s+(in|on)/i.test(t) || /location/i.test(t)) {
-					// Next non-trivial span after this is usually the location
-					result.location = t.replace(/listed\s+(in|on)\s*/i, '').trim()
-					break
+			// Images — confirmed: thumbnails sit inside div[aria-label="Thumbnail N"]
+			// and listing photos have alt="Photo of ..."
+			// In Docker naturalWidth is always 0, so don't rely on dimensions.
+			const imgSet = new Set()
+			document.querySelectorAll('[aria-label^="Thumbnail"] img').forEach(img => {
+				const src = img.src || ''
+				if (src && /scontent/.test(src)) imgSet.add(src)
+			})
+			// Fallback: any scontent img with alt starting "Photo of"
+			if (imgSet.size === 0) {
+				document.querySelectorAll('img[alt^="Photo of"]').forEach(img => {
+					const src = img.src || ''
+					if (src && /scontent/.test(src)) imgSet.add(src)
+				})
+			}
+			// Last resort: all scontent imgs excluding avatar patterns
+			if (imgSet.size === 0) {
+				document.querySelectorAll('img').forEach(img => {
+					const src = img.src || ''
+					if (src && /scontent/.test(src) &&
+						!/(?:\/p\d+x\d+\/|\/c\d+\.\d+\.\d+\.\d+\/|\/cp\d+\/)/.test(src)) {
+						imgSet.add(src)
+					}
+				})
+			}
+			result.picture_urls = Array.from(imgSet)
+
+			// Lat/lon from structured data
+			const ldJsons = []
+			document.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
+				try { ldJsons.push(JSON.parse(s.textContent)) } catch(e) {}
+			})
+			for (const ld of ldJsons) {
+				if (ld.geo) {
+					result.lat = parseFloat(ld.geo.latitude) || 0
+					result.lon = parseFloat(ld.geo.longitude) || 0
+				}
+				if (ld.availableAtOrFrom && ld.availableAtOrFrom.geo) {
+					result.lat = parseFloat(ld.availableAtOrFrom.geo.latitude) || 0
+					result.lon = parseFloat(ld.availableAtOrFrom.geo.longitude) || 0
 				}
 			}
 
-			// Images — collect all listing photos
-			const imgSet = new Set()
-			document.querySelectorAll('img').forEach(img => {
-				const src = img.src || ''
-				// Filter for Facebook CDN images that are listing photos (not icons/avatars)
-				if (src && /scontent/.test(src) && img.naturalWidth > 200) {
-					imgSet.add(src)
-				}
-			})
-			result.picture_urls = Array.from(imgSet)
-
-			// Try to get lat/lon from any embedded map or structured data
-			const scripts = document.querySelectorAll('script[type="application/ld+json"]')
-			scripts.forEach(s => {
-				try {
-					const data = JSON.parse(s.textContent)
-					if (data.geo) {
-						result.lat = parseFloat(data.geo.latitude) || 0
-						result.lon = parseFloat(data.geo.longitude) || 0
-					}
-					if (data.availableAtOrFrom && data.availableAtOrFrom.geo) {
-						result.lat = parseFloat(data.availableAtOrFrom.geo.latitude) || 0
-						result.lon = parseFloat(data.availableAtOrFrom.geo.longitude) || 0
-					}
-				} catch(e) {}
-			})
-
 			// Seller name
-			const sellerLinks = document.querySelectorAll('a[href*="/marketplace/profile/"], a[href*="/people/"]')
-			if (sellerLinks.length) {
-				result.seller = (sellerLinks[0].textContent || '').trim()
+			const sendBtn = document.querySelector('[aria-label^="Send message to"]')
+			if (sendBtn) {
+				const label = sendBtn.getAttribute('aria-label') || ''
+				result.seller = label.replace(/^Send message to\s*/i, '').trim()
+			}
+			if (!result.seller) {
+				const sellerLinks = document.querySelectorAll('a[href*="/marketplace/profile/"], a[href*="/people/"]')
+				if (sellerLinks.length) result.seller = (sellerLinks[0].textContent || '').trim()
 			}
 
 			return result
@@ -366,16 +725,20 @@ module.exports = {
 				Object.defineProperty(navigator, 'webdriver', { get: () => false })
 			})
 
-			// Log in with credentials if available
-			if (fbEmail && fbPassword) {
-				const loginOk = await loginWithCredentials(page, fbEmail, fbPassword, params.jobId)
-				if (!loginOk) {
+			// Try restoring saved session first, then fall back to credential login
+			let loggedIn = false
+			if (params.userId && params.db) {
+				loggedIn = await restoreFbCookies(page, params.db, params.userId, params.jobId)
+			}
+			if (!loggedIn && fbEmail && fbPassword) {
+				loggedIn = await loginWithCredentials(page, fbEmail, fbPassword, params.jobId, params.db, params.userId)
+				if (!loggedIn) {
 					Helpers.logger.log({ print: 'Continuing without login — results may be limited', channels: params.jobId + 'jobWarning' })
 				}
 			}
 
 			Helpers.logger.log({ print: 'Navigating to: ' + pageUrl, channels: params.jobId + 'jobUpdate' })
-			await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 45000 })
+			await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
 			await new Promise(r => setTimeout(r, 3000))
 
 			// Check if we need to dismiss login prompts or cookie dialogs
@@ -501,11 +864,10 @@ module.exports = {
 			try {
 				let title = listing.title || ''
 				let price = listing.price || 0
-				let lat = 0
-				let lon = 0
-				let description = ''
+				let lat = 0, lon = 0
+				let description = '', location = '', seller = '', category = '', propertyType = ''
+				let bedrooms = 0, bathrooms = 0, sqMeters = 0, parking = 0
 				let picture_urls = listing.picture_url ? [listing.picture_url] : []
-				let location = ''
 
 				// Fetch full details from the listing page
 				try {
@@ -519,9 +881,25 @@ module.exports = {
 						if (details.description) description = details.description
 						if (details.picture_urls && details.picture_urls.length) picture_urls = details.picture_urls
 						if (details.location) location = details.location
+						if (details.seller) seller = details.seller
+						if (details.category) category = details.category
+						if (details.propertyType) propertyType = details.propertyType
+						if (details.bedrooms) bedrooms = details.bedrooms
+						if (details.bathrooms) bathrooms = details.bathrooms
+						if (details.sqMeters) sqMeters = details.sqMeters
+						if (details.parking) parking = details.parking
 					}
 				} catch(detailErr) {
 					Helpers.logger.log({ print: `Could not fetch details for ${listing.id}: ${detailErr.message}`, channels: params.jobId + 'jobWarning' })
+				}
+
+				// Geocode location text if we still have no coordinates
+				if (!lat && !lon && location) {
+					try {
+						const geo = await geocodeLocation(location)
+						lat = geo.lat
+						lon = geo.lon
+					} catch(e) {}
 				}
 
 				title = title.replace(/\"/g, '').replace(/\\/g, '').replace(/(\r\n|\n|\r)/gm, '').replace(/    /g, '')
@@ -532,9 +910,10 @@ module.exports = {
 
 				params.db.get('ads').insert({
 					facebookId: String(listing.id),
-					price, lat, lon, url, title,
-					categories: location ? [location] : [],
+					price, lat, lon, url, title, seller,
+					categories: [category, location, propertyType].filter(Boolean),
 					description,
+					bedrooms, bathrooms, sqMeters, parking, propertyType,
 					picture_url: picture_urls[0] || '',
 					picture_urls,
 					datetime: new Date(),

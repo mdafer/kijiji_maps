@@ -127,6 +127,39 @@ var toolbarHtml = `
             </div>
           </div>
 
+          <!-- Property Details -->
+          <div class="filter-section">
+            <label class="filter-label"><i class="fa fa-home"></i> Property Details</label>
+            <div class="filter-row filter-row-thirds">
+              <div class="filter-field">
+                <span class="filter-field-label">Min m²</span>
+                <input id="minSqMeters" name="minSqMeters" type="number" min="0" class="filter-input" placeholder="Any">
+              </div>
+              <div class="filter-field">
+                <span class="filter-field-label">Parking</span>
+                <input id="minParking" name="minParking" type="number" min="0" class="filter-input" placeholder="Any">
+              </div>
+              <div class="filter-field">
+                <span class="filter-field-label">Type</span>
+                <select id="propertyType" name="propertyType" class="filter-input">
+                  <option value="">Any</option>
+                  <option value="apartment">Apartment</option>
+                  <option value="house">House</option>
+                  <option value="condo">Condo</option>
+                  <option value="townhouse">Townhouse</option>
+                  <option value="studio">Studio</option>
+                  <option value="room">Room</option>
+                </select>
+              </div>
+            </div>
+            <div class="filter-row" style="margin-top:8px">
+              <div class="filter-field" style="flex:1">
+                <span class="filter-field-label">Category / Location</span>
+                <input id="categorySearch" name="categorySearch" type="text" class="filter-input" placeholder="e.g. Home sales, São Paulo...">
+              </div>
+            </div>
+          </div>
+
           <!-- Photos -->
           <div class="filter-section">
             <label class="filter-checkbox-label">
@@ -191,6 +224,27 @@ var toolbarHtml = `
   </div>
 </div>
 `;
+
+function _isMessagesAtBottom() {
+  var el = $('#messages')[0]
+  if (!el) return true
+  var isScrollable = el.scrollHeight > el.clientHeight
+  if (!isScrollable) return true
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+}
+
+$('#informationModal').on('shown.bs.modal', function() {
+  $('#messages').off('scroll.autoScroll').on('scroll.autoScroll', function() {
+    var el = this
+    var isScrollable = el.scrollHeight > el.clientHeight
+    if (!isScrollable) return
+    if (_isMessagesAtBottom()) {
+      $('#autoScroll').prop('checked', true)
+    } else {
+      $('#autoScroll').prop('checked', false)
+    }
+  })
+})
 
 function addInfoRow(row)
 {
