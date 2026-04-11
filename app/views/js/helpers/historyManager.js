@@ -14,6 +14,7 @@ function refreshUrlParams()
 		jobName = urlParams.jobName
 		localStorage.setItem('jobId', jobId)
 		localStorage.setItem('jobName', jobName)
+		if (urlParams.platform) localStorage.setItem('platform', urlParams.platform)
 	}
 	else
 		urlParams = {}

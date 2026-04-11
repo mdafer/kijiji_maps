@@ -14,10 +14,10 @@ var _focusAdId = null
 
 // --- Lazy image loading with preload offset ---
 var _lazyImageObserver = null
-function initLazyImageObserver() {
-	if(_lazyImageObserver) return
-	var offset = (window.APP_CONFIG && APP_CONFIG.LAZY_LOAD_OFFSET_PX) || 500
-	_lazyImageObserver = new IntersectionObserver(function(entries) {
+var _scrollContainerObservers = new WeakMap()
+
+function _createLazyObserver(root, margin) {
+	return new IntersectionObserver(function(entries) {
 		entries.forEach(function(entry) {
 			if(entry.isIntersecting) {
 				var img = entry.target
@@ -25,17 +25,40 @@ function initLazyImageObserver() {
 					img.src = img.dataset.src
 					img.removeAttribute('data-src')
 				}
-				_lazyImageObserver.unobserve(img)
+				entry.target._lazyObs.unobserve(img)
 			}
 		})
-	}, { rootMargin: offset + 'px' })
+	}, { root: root || null, rootMargin: margin + 'px' })
+}
+
+function initLazyImageObserver() {
+	if(_lazyImageObserver) return
+	var offset = (window.APP_CONFIG && APP_CONFIG.LAZY_LOAD_OFFSET_PX) || 500
+	_lazyImageObserver = _createLazyObserver(null, offset)
+	_lazyImageObserver._margin = offset
 }
 
 function observeLazyImages(container) {
 	initLazyImageObserver()
+	var offset = _lazyImageObserver._margin || 500
 	var imgs = (container || document).querySelectorAll('img[data-src]')
 	for(var i = 0; i < imgs.length; i++) {
-		_lazyImageObserver.observe(imgs[i])
+		var img = imgs[i]
+		// Find if this image is inside a horizontal scroll container
+		var scrollParent = img.closest('.grid-row-images')
+		if(scrollParent) {
+			// Use a per-container observer so rootMargin works for horizontal scroll
+			if(!_scrollContainerObservers.has(scrollParent)) {
+				var obs = _createLazyObserver(scrollParent, offset)
+				_scrollContainerObservers.set(scrollParent, obs)
+			}
+			var obs = _scrollContainerObservers.get(scrollParent)
+			img._lazyObs = obs
+			obs.observe(img)
+		} else {
+			img._lazyObs = _lazyImageObserver
+			_lazyImageObserver.observe(img)
+		}
 	}
 }
 

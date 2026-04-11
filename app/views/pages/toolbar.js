@@ -283,13 +283,6 @@ function _handleSocketMessage(obj) {
         var status = "Processing Page: " + obj.print
         var extra = ""
         if (obj.params) {
-          if (obj.params.foldIndex) {
-            status = "Fold " + obj.params.foldIndex + (obj.params.totalFolds ? "/" + obj.params.totalFolds : "") + 
-                     " · Page " + (obj.params.foldPageNumber || obj.print)
-            if (obj.params.foldListingsFound !== undefined) {
-              status += " · Found: " + obj.params.foldListingsFound
-            }
-          }
           if (obj.params.startTime) {
             extra = "Elapsed: " + formatElapsed(Date.now() - obj.params.startTime) + " · Total Pages: " + obj.print
             if (obj.params.totalListingsFound !== undefined) {

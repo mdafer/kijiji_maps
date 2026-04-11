@@ -7,8 +7,10 @@ uuid = require('uuid-random')
 module.exports = {
 	newJob: async function(params, authUser, callback){
 		const platform = params.platform || 'kijiji'
-		const job = {id:uuid(), statusCode:2, name:params.name, url: params.url, description: params.description, platform}
-		if(params.priceFolds) job.priceFolds = params.priceFolds
+		const job = {id:uuid(), statusCode:2, name:params.name, url: params.url, description: params.description, platform, lastUpdated: new Date()}
+		if(params.fetchDetails !== undefined) job.fetchDetails = params.fetchDetails
+		if(params.fetchAvailability !== undefined) job.fetchAvailability = params.fetchAvailability
+		if(params.gridDepth) job.gridDepth = params.gridDepth
 		await params.db.get('users').update({"email":authUser.email},{"$push": {"jobs":job}})
 			.catch((err) => {Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'});return callback({ status: Helpers.ApiStatus.DB_ERROR, meta: err})})//.then(() => db.close())
 		params.jobUrl = job.url
@@ -17,13 +19,15 @@ module.exports = {
 		params.pageNumber = 0
 		params.jobName = job.name
 		params.userId = authUser._id
-		if(job.priceFolds) params.priceFolds = job.priceFolds
+		if(job.fetchDetails !== undefined) params.fetchDetails = job.fetchDetails
+		if(job.fetchAvailability !== undefined) params.fetchAvailability = job.fetchAvailability
+		if(job.gridDepth) params.gridDepth = job.gridDepth
 		callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: job.id}})
 		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
 		const pagesProcessed = await scraper.processPage(params)
 		Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:pagesProcessed}, channels:authUser._id+'command'})
 		Helpers.logger.log({ command:'doneProcAndValid', print: pagesProcessed, channels:job.id+'command'})
-		params.db.get('users').update({"jobs.id":job.id},{"$set": {"jobs.$.statusCode":1}})
+		params.db.get('users').update({"jobs.id":job.id},{"$set": {"jobs.$.statusCode":1, "jobs.$.lastUpdated": new Date()}})
 			.catch((err) => {Helpers.logger.log({print:err, channels:job.id+'jobWarning'})})
 	},
 	updateJob: async function(params, authUser, callback){
@@ -66,8 +70,10 @@ module.exports = {
 				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job not found"}})
 			if(job.statusCode==2)
 				return callback({ status: Helpers.ApiStatus.JOB_ALREADY_BEING_PROCESSED, meta: {message:"Job already being processed. Please try again once it's done."}})
-			const updateSet = {"jobs.$.statusCode":2}
-			if(params.priceFolds) updateSet["jobs.$.priceFolds"] = params.priceFolds
+			const updateSet = {"jobs.$.statusCode":2, "jobs.$.lastUpdated": new Date()}
+			if(params.fetchDetails !== undefined) updateSet["jobs.$.fetchDetails"] = params.fetchDetails
+			if(params.fetchAvailability !== undefined) updateSet["jobs.$.fetchAvailability"] = params.fetchAvailability
+			if(params.gridDepth) updateSet["jobs.$.gridDepth"] = params.gridDepth
 			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": updateSet})
 			params.jobUrl = job.url
 			params.jobId = job.id
@@ -75,7 +81,9 @@ module.exports = {
 			params.pageUrl = job.url
 			params.jobName = job.name
 			params.userId = authUser._id
-			params.priceFolds = params.priceFolds || job.priceFolds || null
+			params.fetchDetails = params.fetchDetails !== undefined ? params.fetchDetails : job.fetchDetails
+			params.fetchAvailability = params.fetchAvailability !== undefined ? params.fetchAvailability : job.fetchAvailability
+			params.gridDepth = params.gridDepth || job.gridDepth || null
 			callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: params.jobId}})
 			const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : job.platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
 			await scraper.processPage(params)
@@ -97,7 +105,7 @@ module.exports = {
 	},
 	processPendingJobs: function(params, authUser, callback){
 		Helpers.logger.log("Checking for stale pending jobs...")
-		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name', platform:'$jobs.platform', resumePageUrl:'$jobs.resumePageUrl', fingerprint:'$jobs.fingerprint', resumeOffset:'$jobs.resumeOffset', priceFolds:'$jobs.priceFolds'}}]).then((jobs) => {
+		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name', platform:'$jobs.platform', resumePageUrl:'$jobs.resumePageUrl', fingerprint:'$jobs.fingerprint', resumeOffset:'$jobs.resumeOffset', fetchDetails:'$jobs.fetchDetails', fetchAvailability:'$jobs.fetchAvailability', gridDepth:'$jobs.gridDepth'}}]).then((jobs) => {
 			if(!jobs || jobs.length==0)
 			{
 				callback({ status: Helpers.ApiStatus.NO_PENDING_JOBS, meta:{status:'In Progress', jobs}})
@@ -117,7 +125,9 @@ module.exports = {
 				myparams.userId = job._id
 				if (job.fingerprint) myparams.fingerprint = job.fingerprint
 				if (job.resumeOffset) myparams.resumeOffset = job.resumeOffset
-				if (job.priceFolds) myparams.priceFolds = job.priceFolds
+				if (job.fetchDetails !== undefined) myparams.fetchDetails = job.fetchDetails
+				if (job.fetchAvailability !== undefined) myparams.fetchAvailability = job.fetchAvailability
+				if (job.gridDepth) myparams.gridDepth = job.gridDepth
 				if (job.resumePageUrl || job.resumeOffset)
 					Helpers.logger.log(`Resuming job ${job.name} (${job.id}) from offset: ${job.resumeOffset || 0}`)
 				const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : job.platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper

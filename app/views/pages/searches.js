@@ -36,6 +36,7 @@ var searchespage= `<!-- Content Header (Page header) -->
                     <th>Status</th>
                     <th>Name</th>
                     <th>Description</th>
+                    <th>Last Updated</th>
                     <th>Link</th>
                   </tr>
                   </thead>
@@ -88,9 +89,13 @@ var searchespage= `<!-- Content Header (Page header) -->
             </div>
             
 
-            <div class="form-group" id="newSearchFoldsGroup" style="display:none">
-              <label>Price Folds <small class="text-muted">(split search by price into N sub-ranges for more results)</small></label>
-              <input name="priceFolds" type="number" class="form-control" id="newSearchFolds" min="2" max="10" placeholder="e.g. 3 (optional, 2-10)">
+            <div id="newSearchAirbnbExtras" style="display:none">
+              <div class="form-group">
+                <label>Grid Splits <i class="fa fa-question-circle BStooltip" style="cursor:help" data-placement="top" title="Splits the map area into smaller cells to find more listings. Depth 1 = 4 cells, 2 = 16 cells, 3 = 64 cells, 4 = 256 cells. Dense areas auto-split further if results are capped."></i></label>
+                <input name="gridDepth" type="number" class="form-control" min="1" max="4" placeholder="1 (default)" value="1">
+              </div>
+              <div class="checkbox"><label><input type="checkbox" name="fetchDetails" value="1" checked> Fetch full photos &amp; amenities <small class="text-muted">(slower — visits each listing page)</small></label></div>
+              <div class="checkbox"><label><input type="checkbox" name="fetchAvailability" value="1" checked> Fetch availability calendar</label></div>
             </div>
 
             <!-- textarea -->
@@ -175,17 +180,18 @@ function searchesfunc()
     if(plat === 'airbnb') {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.airbnb.ca/s/Toronto/...')
       $('#newSearchUrlLabel').text('Airbnb Search Link')
-      $('#newSearchFoldsGroup').show()
+      $('#newSearchAirbnbExtras').show()
     } else if(plat === 'facebook') {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.facebook.com/marketplace/toronto/propertyrentals?...')
       $('#newSearchUrlLabel').text('Facebook Marketplace Search Link')
-      $('#newSearchFoldsGroup').show()
+      $('#newSearchAirbnbExtras').hide()
     } else {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.kijiji.ca/...')
       $('#newSearchUrlLabel').text('Kijiji First Page Link (after you click search)')
-      $('#newSearchFoldsGroup').show()
+      $('#newSearchAirbnbExtras').hide()
     }
   }).trigger('change')
+  $('#newSearchAirbnbExtras .BStooltip').tooltip({ trigger: 'hover', container: 'body' })
 
   APIgetProfile(null, function(user){
     if(!user.jobs || !user.jobs.length)
@@ -217,13 +223,18 @@ function searchesfunc()
           statusDom = '<td><span class="label label-warning">Pending</span></td>'
         break
       }
-      let platform = filteredJobs[i].platform || 'kijiji'
+      let platform = filteredJobs[i].platform || (filteredJobs[i].url && filteredJobs[i].url.includes('airbnb') ? 'airbnb' : filteredJobs[i].url && filteredJobs[i].url.includes('facebook.com') ? 'facebook' : 'kijiji')
       let platformLabel = platform === 'airbnb'
         ? '<td><span class="label label-danger">Airbnb</span></td>'
         : platform === 'facebook'
         ? '<td><span class="label label-primary">Facebook</span></td>'
         : '<td><span class="label label-info">Kijiji</span></td>'
       let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : platform === 'facebook' ? 'FB Marketplace Link' : 'Kijiji Link'
+      let descriptionHtml = filteredJobs[i].description
+      if(platform === 'airbnb') {
+        let airbnbDetails = formatAirbnbDetails(filteredJobs[i].url)
+        if(airbnbDetails) descriptionHtml = airbnbDetails + (filteredJobs[i].description ? '<br><small class="text-muted">' + filteredJobs[i].description + '</small>' : '')
+      }
       $('#searchesTBody').append(`
         <tr>
           <td><input type="checkbox" class="searchSelectCb" data-jobid="${filteredJobs[i].id}" data-jobname="${filteredJobs[i].name}"></td>
@@ -233,7 +244,8 @@ function searchesfunc()
           ${platformLabel}
           ${statusDom}
           <td><a href="/index.html#map?jobId=${filteredJobs[i].id}&jobName=${filteredJobs[i].name}&platform=${platform}">${filteredJobs[i].name}</a></td>
-          <td>${filteredJobs[i].description}</td>
+          <td>${descriptionHtml}</td>
+          <td>${filteredJobs[i].lastUpdated ? new Date(filteredJobs[i].lastUpdated).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
           <td><a target="_blank" href="${filteredJobs[i].url}">${linkLabel}</a></td>
         </tr>
       `)
@@ -287,11 +299,36 @@ function searchesfunc()
     socket.on('all', window._searchesSocketHandler)
   }
 
+  // Auto-fill description from Airbnb URL
+  $('#newSearchUrlInput').on('input', function() {
+    if($('#newSearchPlatform').val() !== 'airbnb') return
+    var info = parseAirbnbUrl($(this).val())
+    if(!info) return
+    var descParts = []
+    if(info.location) descParts.push(info.location)
+    if(info.checkin && info.checkout) descParts.push(info.checkin + ' to ' + info.checkout)
+    else if(info.monthlyStart) descParts.push(info.monthlyStart + ' (' + (info.monthlyLength || '') + ')')
+    if(info.guests) descParts.push(info.guests)
+    if(info.price) descParts.push(info.price)
+    if(info.roomTypes) descParts.push(info.roomTypes)
+    if(info.minBedrooms) descParts.push(info.minBedrooms)
+    if(info.amenities) descParts.push(info.amenities)
+    var descField = $('#newSearchForm textarea[name="description"]')
+    // Only auto-fill if user hasn't manually typed a description
+    if(!descField.data('manual')) descField.val(descParts.join(' | '))
+  })
+  $('#newSearchForm textarea[name="description"]').on('keydown', function() { $(this).data('manual', true) })
+
   $('#newSearchForm').on('submit', function(event) {
     event.preventDefault();
     var formData = $('#newSearchForm').serializeObject()
-    if(!formData.priceFolds || formData.priceFolds < 2) delete formData.priceFolds
-    else formData.priceFolds = Number(formData.priceFolds)
+    if(formData.platform === 'airbnb') {
+      formData.fetchDetails = formData.fetchDetails ? true : false
+      formData.fetchAvailability = formData.fetchAvailability ? true : false
+      formData.gridDepth = Number(formData.gridDepth) || 1
+    } else {
+      delete formData.gridDepth
+    }
     APIaddNewSearch(formData, ()=>{$('#newSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
   })
   $('#editSearchForm').on('submit', function(event) {
@@ -332,11 +369,95 @@ function viewSelectedSearches() {
   renderpage()
 }
 
+function parseAirbnbUrl(url) {
+  try {
+    var u = new URL(url)
+    var p = u.searchParams
+    var info = {}
+
+    // Location from path: /s/Curitiba--PR/homes -> Curitiba, PR
+    var pathMatch = u.pathname.match(/\/s\/([^/]+)/)
+    if(pathMatch) info.location = decodeURIComponent(pathMatch[1]).replace(/--/g, ', ')
+    // Override with query param if available
+    if(p.get('query')) info.location = p.get('query')
+
+    // Dates
+    if(p.get('checkin')) info.checkin = p.get('checkin')
+    if(p.get('checkout')) info.checkout = p.get('checkout')
+    if(p.get('monthly_start_date')) info.monthlyStart = p.get('monthly_start_date')
+    if(p.get('monthly_length')) info.monthlyLength = p.get('monthly_length') + ' months'
+
+    // Guests
+    var guests = []
+    if(p.get('adults')) guests.push(p.get('adults') + ' adults')
+    if(p.get('children')) guests.push(p.get('children') + ' children')
+    if(p.get('infants')) guests.push(p.get('infants') + ' infants')
+    if(p.get('pets')) guests.push(p.get('pets') + ' pets')
+    if(guests.length) info.guests = guests.join(', ')
+
+    // Price
+    if(p.get('price_min') || p.get('price_max')) {
+      var priceMin = p.get('price_min')
+      var priceMax = p.get('price_max')
+      info.price = priceMin && priceMax ? '$' + priceMin + ' - $' + priceMax
+        : priceMax ? 'Up to $' + priceMax
+        : '$' + priceMin + '+'
+      if(p.get('price_filter_num_nights')) info.price += ' / ' + p.get('price_filter_num_nights') + ' nights'
+    }
+
+    // Rooms
+    if(p.get('min_bedrooms')) info.minBedrooms = p.get('min_bedrooms') + ' bedrooms'
+    if(p.get('min_bathrooms')) info.minBathrooms = p.get('min_bathrooms') + ' bathrooms'
+    if(p.get('min_beds')) info.minBeds = p.get('min_beds') + ' beds'
+
+    // Room type
+    var roomTypes = p.getAll('room_types[]')
+    if(roomTypes.length) info.roomTypes = roomTypes.join(', ')
+
+    // Amenities
+    var amenityMap = {
+      '1': 'Pool', '2': 'Hot tub', '4': 'Wifi', '5': 'A/C', '7': 'Washer',
+      '8': 'Kitchen', '9': 'Free parking', '11': 'Dryer', '12': 'Hangers',
+      '15': 'Heating', '25': 'TV', '27': 'Fireplace', '30': 'Dishwasher',
+      '33': 'Washer', '34': 'Dryer', '35': 'Smoke alarm', '36': 'Carbon monoxide alarm',
+      '40': 'Gym', '41': 'Breakfast', '44': 'Indoor fireplace', '45': 'Iron',
+      '46': 'Hair dryer', '47': 'Laptop-friendly workspace', '51': 'Self check-in',
+      '57': 'Hot water', '58': 'Bed linens', '64': 'High chair', '78': 'EV charger',
+      '100': 'BBQ grill', '137': 'Long-term stays'
+    }
+    var amenities = p.getAll('amenities[]')
+    if(amenities.length) {
+      info.amenities = amenities.map(function(id) { return amenityMap[id] || 'Amenity #' + id }).join(', ')
+    }
+
+    return info
+  } catch(e) { return null }
+}
+
+function formatAirbnbDetails(url) {
+  var info = parseAirbnbUrl(url)
+  if(!info) return ''
+  var parts = []
+  if(info.location) parts.push('<b>' + info.location + '</b>')
+  if(info.checkin && info.checkout) parts.push('<i class="fa fa-calendar"></i> ' + info.checkin + ' &rarr; ' + info.checkout)
+  else if(info.monthlyStart) parts.push('<i class="fa fa-calendar"></i> ' + info.monthlyStart + ' (' + (info.monthlyLength || '') + ')')
+  if(info.guests) parts.push('<i class="fa fa-users"></i> ' + info.guests)
+  if(info.price) parts.push('<i class="fa fa-dollar"></i> ' + info.price)
+  if(info.roomTypes) parts.push('<i class="fa fa-home"></i> ' + info.roomTypes)
+  if(info.minBedrooms) parts.push('<i class="fa fa-bed"></i> ' + info.minBedrooms)
+  if(info.minBathrooms) parts.push(info.minBathrooms)
+  if(info.minBeds) parts.push(info.minBeds)
+  if(info.amenities) parts.push('<i class="fa fa-check-circle"></i> ' + info.amenities)
+  return parts.join(' &middot; ')
+}
+
 function searchesUnload()
 {
   $('#newSearchForm').off('submit')
   $('#editSearchForm').off('submit')
   $('#newSearchPlatform').off('change')
+  $('#newSearchUrlInput').off('input')
+  $('#newSearchForm textarea[name="description"]').off('keydown').removeData('manual')
   $(document).off('change', '.searchSelectCb')
   $('#selectAllSearches').off('change')
   if(window._searchesSocketHandler) {

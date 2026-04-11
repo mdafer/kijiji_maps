@@ -17,6 +17,52 @@ const Helpers = require('../helpers/includes'),
 
 const detailDelay = () => Number(process.env.AIRBNB_DETAIL_DELAY_MS) || 1000
 const requestErrorDelay = () => Number(process.env.AIRBNB_ERROR_DELAY_MS) || 60000
+// Minimum bbox dimension (in degrees) before we stop subdividing (~110m)
+const MIN_BBOX_SPAN = 0.001
+
+/**
+ * Split a bounding box into 4 quadrants (NW, NE, SW, SE).
+ * Each quadrant is { ne_lat, ne_lng, sw_lat, sw_lng }.
+ */
+function splitBbox(bbox) {
+	const midLat = (bbox.ne_lat + bbox.sw_lat) / 2
+	const midLng = (bbox.ne_lng + bbox.sw_lng) / 2
+	const quads = [
+		{ ne_lat: bbox.ne_lat, ne_lng: midLng,    sw_lat: midLat,    sw_lng: bbox.sw_lng }, // NW
+		{ ne_lat: bbox.ne_lat, ne_lng: bbox.ne_lng, sw_lat: midLat,    sw_lng: midLng },     // NE
+		{ ne_lat: midLat,    ne_lng: midLng,    sw_lat: bbox.sw_lat, sw_lng: bbox.sw_lng }, // SW
+		{ ne_lat: midLat,    ne_lng: bbox.ne_lng, sw_lat: bbox.sw_lat, sw_lng: midLng },     // SE
+	]
+	// Propagate original zoom calibration to children
+	if (bbox._origZoom !== undefined) {
+		quads.forEach(q => { q._origZoom = bbox._origZoom; q._origLngSpan = bbox._origLngSpan })
+	}
+	return quads
+}
+
+/**
+ * Extract bounding box from a search URL, if present.
+ */
+function extractBbox(pageUrl) {
+	try {
+		const u = new URL(pageUrl)
+		const ne_lat = parseFloat(u.searchParams.get('ne_lat'))
+		const ne_lng = parseFloat(u.searchParams.get('ne_lng'))
+		const sw_lat = parseFloat(u.searchParams.get('sw_lat'))
+		const sw_lng = parseFloat(u.searchParams.get('sw_lng'))
+		if ([ne_lat, ne_lng, sw_lat, sw_lng].every(v => !isNaN(v))) {
+			const bbox = { ne_lat, ne_lng, sw_lat, sw_lng }
+			// Capture original zoom and lng span so subdivided cells can scale zoom proportionally
+			const zoom = parseFloat(u.searchParams.get('zoom') || u.searchParams.get('zoom_level'))
+			if (!isNaN(zoom)) {
+				bbox._origZoom = zoom
+				bbox._origLngSpan = Math.abs(ne_lng - sw_lng)
+			}
+			return bbox
+		}
+	} catch(e) {}
+	return null
+}
 
 async function airbnbGet(url) {
 	const { status, html } = await fetchPage(url)
@@ -384,7 +430,7 @@ async function fetchListingAvailability(listingId) {
  * Scrape a single price range. Returns total listing count found.
  * Does NOT handle cleanup or job status — caller handles that.
  */
-async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
+async function scrapeRange(params, priceMin, priceMax, startOffset = 0, bbox = null) {
 	const maxResults = Number(process.env.AIRBNB_MAX_RESULTS) || 270
 	const rangeLabel = priceMax != null ? `$${priceMin}-$${priceMax}` : `$${priceMin}+`
 	if (startOffset > 0) Helpers.logger.log({print: `Resuming price range: ${rangeLabel} from offset ${startOffset}`, channels:params.jobId+'jobUpdate'})
@@ -402,7 +448,6 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 	while (params.pageUrl && hasMore) {
 		try {
 			params.pageNumber++
-			if (params.foldPageNumber !== undefined) params.foldPageNumber++
 			let user = await params.db.get('users').findOne({'jobs.id': params.jobId})
 			let jobStatusCode = user ? user.jobs.find(job => job.id == params.jobId).statusCode : 0
 			if (!user || !jobStatusCode || jobStatusCode < 2) {
@@ -415,6 +460,23 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 			apiParams.set('price_min', String(priceMin))
 			if (priceMax != null) apiParams.set('price_max', String(priceMax))
 			else apiParams.delete('price_max')
+			// Override bounding box if a grid cell was provided
+			if (bbox) {
+				apiParams.set('ne_lat', String(bbox.ne_lat))
+				apiParams.set('ne_lng', String(bbox.ne_lng))
+				apiParams.set('sw_lat', String(bbox.sw_lat))
+				apiParams.set('sw_lng', String(bbox.sw_lng))
+				apiParams.set('search_by_map', 'true')
+				// Scale zoom relative to the original search URL's zoom and bbox.
+				// zoom = origZoom + log2(origLngSpan / cellLngSpan)
+				const lngSpan = Math.abs(bbox.ne_lng - bbox.sw_lng) || 0.001
+				if (bbox._origZoom && bbox._origLngSpan) {
+					const cellZoom = bbox._origZoom + Math.log2(bbox._origLngSpan / lngSpan)
+					const zoomStr = String(Math.round(cellZoom * 100) / 100)
+					apiParams.set('zoom', zoomStr)
+					if (apiParams.has('zoom_level')) apiParams.set('zoom_level', zoomStr)
+				}
+			}
 			if (offset > 0) apiParams.set('items_offset', String(offset))
 			// Airbnb requires search_session_id and section_offset from previous
 			// responses to maintain pagination state — without these, later pages
@@ -547,18 +609,58 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0) {
 
 	Helpers.logger.log({print: `[${rangeLabel}] Range complete: ${totalFound} listings found`, channels:params.jobId+'jobUpdate'})
 
-	// If we hit the max, split this range in half and recurse
-	if (totalFound >= maxResults && priceMax != null && priceMax - priceMin > 1) {
-		const mid = Math.floor((priceMin + priceMax) / 2)
-		Helpers.logger.log({print: `[${rangeLabel}] Hit max results (${maxResults}), splitting into $${priceMin}-$${mid} and $${mid}-$${priceMax}`, channels:params.jobId+'jobUpdate'})
-		const countLow = await scrapeRange(params, priceMin, mid)
-		if (countLow === -1) return -1
-		const countHigh = await scrapeRange(params, mid, priceMax)
-		if (countHigh === -1) return -1
-		return totalFound + countLow + countHigh
+	return totalFound
+}
+
+/**
+ * Recursively scrape a bounding box by subdividing into quadrants when
+ * the result count is saturated (hits maxResults). This ensures dense
+ * areas are scraped at higher resolution while sparse areas use a single
+ * request. Deduplication by listing ID happens at the DB layer (airbnbId).
+ */
+async function scrapeGrid(params, priceMin, priceMax, bbox, depth = 0) {
+	const maxResults = Number(process.env.AIRBNB_MAX_RESULTS) || 270
+	const maxGridDepth = Number(process.env.AIRBNB_MAX_GRID_DEPTH) || 6
+	const minGridDepth = params.gridDepth || Number(process.env.AIRBNB_MIN_GRID_DEPTH) || 1
+	const bboxLabel = `[${bbox.sw_lat.toFixed(3)},${bbox.sw_lng.toFixed(3)} → ${bbox.ne_lat.toFixed(3)},${bbox.ne_lng.toFixed(3)}]`
+
+	const latSpan = bbox.ne_lat - bbox.sw_lat
+	const lngSpan = bbox.ne_lng - bbox.sw_lng
+
+	// Always subdivide until we reach minimum depth, then only if saturated
+	const mustSplit = depth < minGridDepth && latSpan > MIN_BBOX_SPAN && lngSpan > MIN_BBOX_SPAN
+	const canSplit = depth < maxGridDepth && latSpan > MIN_BBOX_SPAN && lngSpan > MIN_BBOX_SPAN
+
+	if (mustSplit) {
+		Helpers.logger.log({print: `Splitting grid cell ${bboxLabel} into 4 quadrants (depth ${depth + 1})`, channels: params.jobId+'jobUpdate'})
+		const quadrants = splitBbox(bbox)
+		let total = 0
+		for (const quad of quadrants) {
+			const result = await scrapeGrid(params, priceMin, priceMax, quad, depth + 1)
+			if (result === -1) return -1
+			total += result
+		}
+		return total
 	}
 
-	return totalFound
+	Helpers.logger.log({print: `Grid cell ${bboxLabel} (depth ${depth})`, channels: params.jobId+'jobUpdate'})
+
+	const count = await scrapeRange(params, priceMin, priceMax, 0, bbox)
+	if (count === -1) return -1 // job aborted
+
+	if (count >= maxResults && canSplit) {
+		Helpers.logger.log({print: `Grid cell ${bboxLabel} saturated (${count} >= ${maxResults}), splitting into 4 quadrants (depth ${depth + 1})`, channels: params.jobId+'jobUpdate'})
+		const quadrants = splitBbox(bbox)
+		let subTotal = 0
+		for (const quad of quadrants) {
+			const result = await scrapeGrid(params, priceMin, priceMax, quad, depth + 1)
+			if (result === -1) return -1
+			subTotal += result
+		}
+		return count + subTotal
+	}
+
+	return count
 }
 
 module.exports = {
@@ -568,7 +670,6 @@ module.exports = {
 			return
 		params.index_site = 0
 		params.startTime = Date.now()
-		params.foldPageNumber = 0
 		params.totalListingsFound = 0
 		const resuming = !!params.fingerprint
 		if (!resuming)
@@ -613,41 +714,14 @@ module.exports = {
 			if (searchUrl.searchParams.get('price_max')) origPriceMax = Number(searchUrl.searchParams.get('price_max'))
 		} catch(e) {}
 
-		// If no max price set, use a large default so we can still split
+		// If no max price set, use a large default
 		if (origPriceMax == null) origPriceMax = 50000
 
-		if (params.priceFolds && params.priceFolds >= 2) {
-			const step = Math.ceil((origPriceMax - origPriceMin) / params.priceFolds)
-			const ranges = []
-			for (let i = 0; i < params.priceFolds; i++) {
-				const lo = origPriceMin + (step * i)
-				const hi = (i === params.priceFolds - 1) ? origPriceMax : origPriceMin + (step * (i + 1))
-				ranges.push({min: lo, max: hi})
-			}
-			Helpers.logger.log({print: `Splitting Airbnb search into ${ranges.length} price folds`, channels:params.jobId+'jobUpdate'})
-			params.totalFolds = ranges.length
-			let idx = 0
-			for (const range of ranges) {
-				idx++
-				params.foldIndex = idx
-				params.foldPageNumber = 0
-				params.foldListingsFound = 0
-				const rangeLabel = `$${range.min}-$${range.max}`
-				Helpers.logger.log({print: `Scraping price fold: ${rangeLabel}`, channels:params.jobId+'jobUpdate'})
-				const result = await scrapeRange(params, range.min, range.max)
-				if (result === -1) break // job aborted
-				if (result === 0) {
-					// Build the URL for the warning message
-					let foldUrl = params.pageUrl
-					try {
-						const urlObj = new URL(params.pageUrl)
-						urlObj.searchParams.set('price_min', String(range.min))
-						urlObj.searchParams.set('price_max', String(range.max))
-						foldUrl = urlObj.toString()
-					} catch(e) {}
-					Helpers.logger.log({print: `Fold ${rangeLabel} returned 0 listings — skipped. Verify manually (may be empty or soft-blocked): ${foldUrl}`, channels:params.jobId+'jobWarning'})
-				}
-			}
+		// Extract bounding box from URL for grid subdivision
+		const origBbox = extractBbox(params.pageUrl)
+		if (origBbox) {
+			Helpers.logger.log({print: `Bounding box detected — grid subdivision enabled`, channels:params.jobId+'jobUpdate'})
+			await scrapeGrid(params, origPriceMin, origPriceMax, origBbox)
 		} else {
 			await scrapeRange(params, origPriceMin, origPriceMax, params.resumeOffset || 0)
 		}
@@ -679,36 +753,27 @@ module.exports = {
 	},
 
 	processPageListings: async function(params, listings, callback=null){
-		if (params.foldListingsFound !== undefined) params.foldListingsFound += listings.length
-		if (params.totalListingsFound !== undefined) params.totalListingsFound += listings.length
+			if (params.totalListingsFound !== undefined) params.totalListingsFound += listings.length
 
 		Helpers.logger.log({
-			command: 'procPageNumber', 
-			print: params.pageNumber, 
-			params: { 
-				startTime: params.startTime, 
-				foldIndex: params.foldIndex, 
-				totalFolds: params.totalFolds, 
-				foldPageNumber: params.foldPageNumber,
-				foldListingsFound: params.foldListingsFound,
+			command: 'procPageNumber',
+			print: params.pageNumber,
+			params: {
+				startTime: params.startTime,
 				totalListingsFound: params.totalListingsFound
-			}, 
+			},
 			channels: params.jobId+'command'
 		})
 		params.newAdsFound = false
 		await eachOfLimit(listings, 1, module.exports.processSingleListing.bind(null, params))
 		Helpers.logger.log({
-			command: 'donePageNumber', 
-			params: { 
-				refresh: params.newAdsFound, 
+			command: 'donePageNumber',
+			params: {
+				refresh: params.newAdsFound,
 				startTime: params.startTime,
-				foldIndex: params.foldIndex,
-				totalFolds: params.totalFolds,
-				foldPageNumber: params.foldPageNumber,
-				foldListingsFound: params.foldListingsFound,
 				totalListingsFound: params.totalListingsFound
-			}, 
-			print: params.pageNumber, 
+			},
+			print: params.pageNumber,
 			channels: params.jobId+'command'
 		})
 		if(callback)
@@ -729,23 +794,28 @@ module.exports = {
 			try{
 		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id), ['jobs.'+params.jobId]: {$exists: true}},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}, url}})
 		    	if (doc){
-		    		// If cached listing is missing amenities/photos/availability, fetch them now
-		    		if ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1) || !doc.availability) {
+		    		// Optionally backfill missing details/availability for cached listings
+		    		const needsDetails = params.fetchDetails && ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1))
+		    		const needsAvailability = params.fetchAvailability && !doc.availability
+		    		if (needsDetails || needsAvailability) {
 		    			try {
-		    				const details = await fetchListingDetails(listing.id, params.bookingParams)
-		    				if (details) {
-		    					const update = {}
-		    					if (details.amenities.length) update.amenities = details.amenities
-		    					if (details.picture_urls.length > 1) update.picture_urls = details.picture_urls
-		    					if (details.amenityIdMap && Object.keys(details.amenityIdMap).length) update.amenityIdMap = details.amenityIdMap
-		    					if (details.photo_categories) update.photo_categories = details.photo_categories
+		    				const update = {}
+		    				if (needsDetails) {
+		    					const details = await fetchListingDetails(listing.id, params.bookingParams)
+		    					if (details) {
+		    						if (details.amenities.length) update.amenities = details.amenities
+		    						if (details.picture_urls.length > 1) update.picture_urls = details.picture_urls
+		    						if (details.amenityIdMap && Object.keys(details.amenityIdMap).length) update.amenityIdMap = details.amenityIdMap
+		    						if (details.photo_categories) update.photo_categories = details.photo_categories
+		    					}
+		    				}
+		    				if (needsAvailability) {
 		    					const availability = await fetchListingAvailability(listing.id)
 		    					if (availability) update.availability = availability
-
-		    					if (Object.keys(update).length) {
-		    						await params.db.get('ads').update({'airbnbId': String(listing.id)}, {$set: update})
-		    						Helpers.logger.log({print: `Updated details and availability for cached listing: ${listing.id}`, channels:params.jobId+'jobUpdate'})
-		    					}
+		    				}
+		    				if (Object.keys(update).length) {
+		    					await params.db.get('ads').update({'airbnbId': String(listing.id)}, {$set: update})
+		    					Helpers.logger.log({print: `Updated details for cached listing: ${listing.id}`, channels:params.jobId+'jobUpdate'})
 		    				}
 		    			} catch(e) {
 		    				Helpers.logger.log({print: `Could not update cached listing ${listing.id}: ${e.message}`, channels:params.jobId+'jobWarning'})
@@ -769,28 +839,32 @@ module.exports = {
 		    	params.newAdsFound = true
 				Helpers.logger.log({print: title, channels:params.jobId+'jobUpdate'})
 
-				// Fetch full details (photos + amenities) from listing page
+				// Optionally fetch full details (photos + amenities) from listing page
 				let fullPhotos = listing.picture_urls || []
 				let fullAmenities = listing.amenities || []
 				let fullAmenityIdMap = {}
 				let fullPhotoCategories = null
-				try {
-					const details = await fetchListingDetails(listing.id, params.bookingParams)
-					if (details) {
-						if (details.picture_urls.length) fullPhotos = details.picture_urls
-						if (details.amenities.length) fullAmenities = details.amenities
-						if (details.amenityIdMap) fullAmenityIdMap = details.amenityIdMap
-						if (details.photo_categories) fullPhotoCategories = details.photo_categories
+				if (params.fetchDetails) {
+					try {
+						const details = await fetchListingDetails(listing.id, params.bookingParams)
+						if (details) {
+							if (details.picture_urls.length) fullPhotos = details.picture_urls
+							if (details.amenities.length) fullAmenities = details.amenities
+							if (details.amenityIdMap) fullAmenityIdMap = details.amenityIdMap
+							if (details.photo_categories) fullPhotoCategories = details.photo_categories
+						}
+					} catch(detailErr) {
+						Helpers.logger.log({print: `Could not fetch details for ${listing.id}: ${detailErr.message}`, channels:params.jobId+'jobWarning'})
 					}
-				} catch(detailErr) {
-					Helpers.logger.log({print: `Could not fetch details for ${listing.id}: ${detailErr.message}`, channels:params.jobId+'jobWarning'})
 				}
 
 				let availability = null
-				try {
-					availability = await fetchListingAvailability(listing.id)
-				} catch(availErr) {
-					Helpers.logger.log({print: `Could not fetch availability for ${listing.id}: ${availErr.message}`, channels:params.jobId+'jobWarning'})
+				if (params.fetchAvailability) {
+					try {
+						availability = await fetchListingAvailability(listing.id)
+					} catch(availErr) {
+						Helpers.logger.log({print: `Could not fetch availability for ${listing.id}: ${availErr.message}`, channels:params.jobId+'jobWarning'})
+					}
 				}
 
 			    params.db.get('ads').insert({

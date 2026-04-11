@@ -192,13 +192,22 @@ function rebuildViewedList()
 
 function resetJob()
 {
-  var platformName = (urlParams.platform === 'airbnb') ? 'Airbnb' : (urlParams.platform === 'facebook') ? 'Facebook' : 'Kijiji'
-  var showFolds = true
+  refreshUrlParams()
+  var detectedPlatform = urlParams.platform
+    || localStorage.getItem('platform')
+    || (_markers.length && _markers[0].adData && _markers[0].adData.platform)
+    || null
+  var platformName = (detectedPlatform === 'airbnb') ? 'Airbnb' : (detectedPlatform === 'facebook') ? 'Facebook' : 'Kijiji'
+  var isAirbnb = detectedPlatform === 'airbnb'
   $('#refreshListingsModal').remove()
-  var foldsHtml = showFolds ? `
-    <div class="form-group" style="margin-top:14px">
-      <label style="font-weight:600">Price Folds <small class="text-muted">(split by price into N sub-ranges, 2–10, optional)</small></label>
-      <input id="refreshFoldsInput" type="number" min="2" max="10" class="form-control" placeholder="Leave empty for no splitting">
+  var airbnbExtrasHtml = isAirbnb ? `
+    <div style="margin-top:14px">
+      <div class="form-group">
+        <label style="font-weight:600">Grid Splits <i class="fa fa-question-circle BStooltip" style="cursor:help" data-placement="top" title="Splits the map area into smaller cells to find more listings. Depth 1 = 4 cells, 2 = 16 cells, 3 = 64 cells, 4 = 256 cells. Dense areas auto-split further if results are capped."></i></label>
+        <input id="refreshGridDepth" type="number" min="1" max="4" class="form-control" placeholder="1 (default)" value="1">
+      </div>
+      <div class="checkbox"><label><input type="checkbox" id="refreshFetchDetails" value="1"> Fetch full photos &amp; amenities <small class="text-muted">(slower — visits each listing page)</small></label></div>
+      <div class="checkbox"><label><input type="checkbox" id="refreshFetchAvailability" value="1"> Fetch availability calendar</label></div>
     </div>` : ''
   var modalHtml = `
   <div id="refreshListingsModal" class="modal fade" role="dialog" style="display:none">
@@ -210,8 +219,7 @@ function resetJob()
         </div>
         <div class="modal-body">
           <p>Update listings for this search from <strong>${platformName}</strong>?</p>
-          ${foldsHtml}
-          <div id="refreshFoldsError" style="color:#a94442;margin-top:6px;display:none"></div>
+          ${airbnbExtrasHtml}
         </div>
         <div class="modal-footer">
           <div class="pull-left"><button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button></div>
@@ -221,22 +229,16 @@ function resetJob()
     </div>
   </div>`
   $('body').append(modalHtml)
+  $('#refreshListingsModal .BStooltip').tooltip({ trigger: 'hover', container: 'body' })
   $('#refreshListingsConfirmBtn').on('click', function() {
-    var priceFolds = null
-    if(showFolds) {
-      var val = $('#refreshFoldsInput').val().trim()
-      if(val !== '') {
-        priceFolds = Number(val)
-        if(isNaN(priceFolds) || priceFolds < 2 || priceFolds > 10) {
-          $('#refreshFoldsError').text('Price folds must be between 2 and 10').show()
-          return
-        }
-      }
-    }
     $('#refreshListingsModal').modal('hide')
     $('#informationModal').modal('show')
     var params = {jobId}
-    if(priceFolds) params.priceFolds = priceFolds
+    if(isAirbnb) {
+      params.fetchDetails = $('#refreshFetchDetails').is(':checked')
+      params.fetchAvailability = $('#refreshFetchAvailability').is(':checked')
+      params.gridDepth = Number($('#refreshGridDepth').val()) || 1
+    }
     APIresetJob(JSON.stringify(params))
   })
   $('#refreshListingsModal').on('hidden.bs.modal', function(){ $(this).remove() })

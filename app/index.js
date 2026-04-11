@@ -75,7 +75,6 @@ app.all('*', (req, res, next) => {
 		logger.log('OPTIONS SUCCESS');
 		return res.end();
 	}
-	console.log(req.body)
 	req.body.db = db;
 	Helpers.router.authorize(req, res, next);//next is called inside
 });
@@ -151,7 +150,9 @@ app.put('/job', [
   		check('url').exists().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com']})),
   		check('platform').optional().trim().escape().isIn(['kijiji', 'airbnb', 'facebook']),
   		check('description').trim().escape(),
-  		check('priceFolds').optional().isInt({min:2, max:10}).toInt()
+  		check('fetchDetails').optional().toBoolean(),
+  		check('fetchAvailability').optional().toBoolean(),
+  		check('gridDepth').optional().isInt({min:1, max:4}).toInt()
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.newJob);
 })
@@ -167,7 +168,9 @@ app.patch('/job', [
 
 app.post('/resetJob', [
   		check('jobId').exists(),
-  		check('priceFolds').optional().isInt({min:2, max:10}).toInt()
+  		check('fetchDetails').optional().toBoolean(),
+  		check('fetchAvailability').optional().toBoolean(),
+  		check('gridDepth').optional().isInt({min:1, max:4}).toInt()
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.resetJob);
 });

@@ -620,31 +620,6 @@ async function fetchListingDetails(listingId) {
 	}
 }
 
-/**
- * Parse Facebook Marketplace price range from URL (minPrice, maxPrice query params)
- */
-function parseFbPriceFromUrl(url) {
-	try {
-		const urlObj = new URL(url)
-		const min = urlObj.searchParams.get('minPrice')
-		const max = urlObj.searchParams.get('maxPrice')
-		if (!min && !max) return null
-		return { min: min ? Number(min) : 0, max: max ? Number(max) : null }
-	} catch(e) { return null }
-}
-
-/**
- * Set Facebook Marketplace price range on a URL
- */
-function setFbUrlPrice(url, min, max) {
-	try {
-		const urlObj = new URL(url)
-		if (min != null) urlObj.searchParams.set('minPrice', String(min))
-		if (max != null) urlObj.searchParams.set('maxPrice', String(max))
-		return urlObj.toString()
-	} catch(e) { return url }
-}
-
 module.exports = {
 	processPage: async function(params, callback = null) {
 		Helpers.logger.log({ print: 'Processing Facebook Marketplace listings for: ' + params.jobName, channels: params.jobId + 'jobUpdate' })
@@ -668,48 +643,6 @@ module.exports = {
 		}
 		if (!fbEmail && process.env.FB_COOKIES) {
 			await seedCookies(process.env.FB_COOKIES, '.facebook.com')
-		}
-
-		// Price folds: split into sub-ranges and scrape each
-		if (params.priceFolds && params.priceFolds >= 2) {
-			const price = parseFbPriceFromUrl(params.pageUrl)
-			if (price && price.max) {
-				const step = Math.ceil((price.max - (price.min || 0)) / params.priceFolds)
-				const ranges = []
-				for (let i = 0; i < params.priceFolds; i++) {
-					const lo = (price.min || 0) + (step * i)
-					const hi = (i === params.priceFolds - 1) ? price.max : (price.min || 0) + (step * (i + 1))
-					ranges.push({min: lo, max: hi})
-				}
-				Helpers.logger.log({print: `Splitting Facebook search into ${ranges.length} price folds`, channels:params.jobId+'jobUpdate'})
-				params.totalFolds = ranges.length
-				let idx = 0
-				let totalPageNumber = 0
-				for (const range of ranges) {
-					idx++
-					params.foldIndex = idx
-					params.foldListingsFound = 0
-					// Check job status before each fold
-					let user = await params.db.get('users').findOne({'jobs.id':params.jobId})
-					let jobStatusCode = user ? user.jobs.find(job => job.id == params.jobId).statusCode : 0
-					if(!user || !jobStatusCode || jobStatusCode < 2) {
-						Helpers.logger.log({print: `Job ${params.jobId} ${params.jobName} stopped`, channels:params.jobId+'jobUpdate'})
-						break
-					}
-					const rangeLabel = `$${range.min}-$${range.max}`
-					const foldUrl = setFbUrlPrice(params.pageUrl, range.min, range.max)
-					Helpers.logger.log({print: `Scraping Facebook price fold: ${rangeLabel}`, channels:params.jobId+'jobUpdate'})
-					const foldPages = await module.exports._scrapeSinglePage(params, foldUrl, fbEmail, fbPassword)
-					if (foldPages === 0) {
-						Helpers.logger.log({print: `Fold ${rangeLabel} returned 0 listings — skipped. Verify manually (may be empty or soft-blocked): ${foldUrl}`, channels:params.jobId+'jobWarning'})
-					}
-					totalPageNumber += foldPages
-				}
-				// Cleanup and finish
-				return module.exports._finishJob(params, totalPageNumber, callback)
-			} else {
-				Helpers.logger.log({print: `Cannot split by price: URL has no minPrice/maxPrice params. Running without folds.`, channels:params.jobId+'jobWarning'})
-			}
 		}
 
 		const pageNumber = await module.exports._scrapeSinglePage(params, params.pageUrl, fbEmail, fbPassword)
@@ -815,35 +748,28 @@ module.exports = {
 	},
 
 	processPageListings: async function(params, listings, callback = null) {
-		if (params.foldListingsFound !== undefined) params.foldListingsFound += listings.length
 		if (params.totalListingsFound !== undefined) params.totalListingsFound += listings.length
 
 		Helpers.logger.log({
-			command: 'procPageNumber', 
-			print: params.pageNumber, 
-			params: { 
-				startTime: params.startTime, 
-				foldIndex: params.foldIndex, 
-				totalFolds: params.totalFolds,
-				foldListingsFound: params.foldListingsFound,
+			command: 'procPageNumber',
+			print: params.pageNumber,
+			params: {
+				startTime: params.startTime,
 				totalListingsFound: params.totalListingsFound
-			}, 
-			channels: params.jobId + 'command' 
+			},
+			channels: params.jobId + 'command'
 		})
 		params.newAdsFound = false
 		await eachOfLimit(listings, 1, module.exports.processSingleListing.bind(null, params))
 		Helpers.logger.log({
-			command: 'donePageNumber', 
-			params: { 
-				refresh: params.newAdsFound, 
+			command: 'donePageNumber',
+			params: {
+				refresh: params.newAdsFound,
 				startTime: params.startTime,
-				foldIndex: params.foldIndex,
-				totalFolds: params.totalFolds,
-				foldListingsFound: params.foldListingsFound,
 				totalListingsFound: params.totalListingsFound
-			}, 
-			print: params.pageNumber, 
-			channels: params.jobId + 'command' 
+			},
+			print: params.pageNumber,
+			channels: params.jobId + 'command'
 		})
 		if (callback) callback(null, true)
 		return params.newAdsFound
