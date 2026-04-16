@@ -850,8 +850,11 @@ module.exports = {
 					platform: 'facebook',
 					jobs: { [params.jobId]: { fingerprint: params.fingerprint } }
 				}, function(err, doc) {
-					if (err)
+					if (err) {
 						Helpers.logger.log({ print: 'Error adding listing to DB: ' + err, channels: params.jobId + 'jobWarning' })
+						return
+					}
+					if (doc && Helpers.io) Helpers.io.emit('newAd', {jobId: params.jobId, ad: doc})
 				})
 
 				// Delay between detail page fetches

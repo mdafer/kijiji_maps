@@ -321,16 +321,44 @@ function _handleSocketMessage(obj) {
   }
 }
 
+function _isJobInCurrentView(adJobId) {
+  if(!_socketJobId || !adJobId) return false
+  if(_socketJobId === adJobId) return true
+  if(_socketJobId === 'multi') {
+    try {
+      var multiIds = JSON.parse(localStorage.getItem('multiJobIds') || '[]')
+      return multiIds.indexOf(adJobId) !== -1
+    } catch(e) { return false }
+  }
+  return false
+}
+
+function _handleNewAd(data) {
+  if(!data || !data.ad || !_isJobInCurrentView(data.jobId)) return
+  var ad = data.ad
+  if(ad.lat == null || ad.lon == null) return
+  if(typeof _markers !== 'undefined' && _markers.some(function(m){ return m.url === ad.url })) return
+  if(typeof setMarkersByAds === 'function' && typeof map !== 'undefined' && map) {
+    setMarkersByAds(map, [ad], false)
+    $('.resultscount').html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
+  } else if(typeof loadGridAds === 'function' && window.currentState === 'grid') {
+    // Grid view doesn't append in-place; fall back to its existing refetch path
+    loadGridAds($('#filtersForm').serialize())
+  }
+}
+
 function setupSocketListeners() {
   teardownSocketListeners()
   console.log('[socket] setupSocketListeners jobId=', jobId, 'messagesEl=', $('#messages').length)
   if(!jobId) return
   _socketJobId = jobId
   socket.on('all', _handleSocketMessage)
+  socket.on('newAd', _handleNewAd)
 }
 
 function teardownSocketListeners() {
   socket.off('all', _handleSocketMessage)
+  socket.off('newAd', _handleNewAd)
   _socketJobId = null
 }
 

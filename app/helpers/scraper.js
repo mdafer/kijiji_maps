@@ -181,8 +181,11 @@ module.exports = {
 					'pageUrl': params.pageUrl,
 					'jobs': {[params.jobId]:{fingerprint: params.fingerprint}}
 			    }, function (err, doc) {
-			        if (err)
+			        if (err) {
 						Helpers.logger.log({print: `Error adding ad to DB: `+ err, channels:params.jobId+'jobWarning'})
+						return
+					}
+					if (doc && Helpers.io) Helpers.io.emit('newAd', {jobId: params.jobId, ad: doc})
 			    })
 			    return
 			}
