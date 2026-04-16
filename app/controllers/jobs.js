@@ -37,6 +37,7 @@ module.exports = {
 				return callback({ status: ApiStatus.NOT_FOUND, meta: null })
 			let job = user.jobs.find(job => { return job.id == params.id})
 			Object.assign(job, pick(params, ['name', 'url', 'description']))
+			if(params.gridDepth !== undefined) job.gridDepth = Number(params.gridDepth) || 1
 			job = await params.db.get('users').findOneAndUpdate({"jobs.id":params.id},{$set: {"jobs.$":job}})
 			callback({status: ApiStatus.SUCCESS, meta: job})
 		}
@@ -59,6 +60,26 @@ module.exports = {
 		catch(err) {
 			Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})
 		}//.then(() => db.close())
+	},
+	stopJob: async function(params, authUser, callback){
+		try{
+			const user = await params.db.get('users').findOne({"jobs.id":params.jobId})
+			if(!user)
+				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job '"+params.jobId+"' not found"}})
+			const job = user.jobs.find(job => { return job.id == params.jobId})
+			if(!job)
+				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job not found"}})
+			if(job.statusCode !== 2)
+				return callback({ status: Helpers.ApiStatus.NO_CHANGES_MADE, meta: {message:"Job is not running", jobId: params.jobId}})
+			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": {"jobs.$.statusCode":0, "jobs.$.lastUpdated": new Date()}})
+			Helpers.logger.log({print:`Job ${params.jobId} stop requested`, channels:params.jobId+'jobUpdate'})
+			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, stopped:true}, channels:authUser._id+'command'})
+			Helpers.logger.log({ command:'doneProcAndValid', print: 0, channels:params.jobId+'command'})
+			return callback({status: Helpers.ApiStatus.SUCCESS, meta: {status:'Stopped', jobId: params.jobId}})
+		}
+		catch(err) {
+			Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})
+		}
 	},
 	resetJob: async function(params, authUser, callback){
 		try {

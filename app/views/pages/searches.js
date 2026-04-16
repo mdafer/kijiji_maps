@@ -150,6 +150,10 @@ var searchespage= `<!-- Content Header (Page header) -->
               <label>Search Description</label>
               <textarea id ="searchDescriptionBox" name="description" class="form-control" rows="3" placeholder="Description"></textarea>
             </div>
+            <div id="editSearchAirbnbExtras" class="form-group" style="display:none">
+              <label>Grid Splits <i class="fa fa-question-circle BStooltip" style="cursor:help" data-placement="top" title="Splits the map area into smaller cells to find more listings. Depth 1 = 4 cells, 2 = 16 cells, 3 = 64 cells, 4 = 256 cells. Dense areas auto-split further if results are capped."></i></label>
+              <input id="searchGridDepthBox" name="gridDepth" type="number" class="form-control" min="1" max="4" placeholder="1 (default)">
+            </div>
             <input type="submit" value="Submit" style="display:none;">
           </form>
         </div>
@@ -245,6 +249,7 @@ function searchesfunc()
         <tr>
           <td><input type="checkbox" class="searchSelectCb" data-jobid="${filteredJobs[i].id}" data-jobname="${filteredJobs[i].name}"></td>
           <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
+          ${filteredJobs[i].statusCode === 2 ? `<button type="button" class="btn btn-warning stopSearchBtn BStooltip" rel="tooltip" data-placement="top" title="stop"><i class="fa fa-stop"></i></button>` : ''}
           <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
           </td>
           ${platformLabel}
@@ -255,10 +260,28 @@ function searchesfunc()
           <td><a target="_blank" href="${filteredJobs[i].url}">${linkLabel}</a></td>
         </tr>
       `)
-      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('url', filteredJobs[i].url).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data)
+      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('url', filteredJobs[i].url).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data).data('platform', platform).data('gridDepth', filteredJobs[i].gridDepth || 1)
       $( "#searchesTBody .delSearchBtn" ).last().data('id', filteredJobs[i].id)
+      if(filteredJobs[i].statusCode === 2)
+        $( "#searchesTBody .stopSearchBtn" ).last().data('id', filteredJobs[i].id).data('name', filteredJobs[i].name)
       $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
     }
+
+    $('.stopSearchBtn').on('click', function(event){
+      event.preventDefault();
+      var stopId = $(this).data('id')
+      var stopName = $(this).data('name') || 'this search'
+      showConfirmModal(
+        'Stop Search',
+        'Stop running search "' + stopName + '"? You can re-run it later with Run Now.',
+        function() {
+          APIstopJob(JSON.stringify({jobId: stopId}), ()=>{
+            setTimeout(()=>{renderpage('searches')},300)
+          })
+        },
+        { confirmLabel: 'Stop', confirmClass: 'btn-warning' }
+      )
+    })
 
     $('.delSearchBtn').on('click', function(event){
       event.preventDefault();
@@ -279,11 +302,18 @@ function searchesfunc()
     $('.editSearchBtn').on('click', function(event){
       event.preventDefault();
       var jobIdForEdit = $(this).data('id')
-      $('#editSearchForm').data('jobId', jobIdForEdit)
+      var jobPlatform = $(this).data('platform')
+      $('#editSearchForm').data('jobId', jobIdForEdit).data('platform', jobPlatform)
       $('#searchId').val(jobIdForEdit)
       $('#searchNameBox').val($(this).data('name'))
       $('#searchUrlBox').val($(this).data('url'))
       $('#searchDescriptionBox').val($(this).data('description'))
+      if(jobPlatform === 'airbnb') {
+        $('#searchGridDepthBox').val($(this).data('gridDepth'))
+        $('#editSearchAirbnbExtras').show()
+      } else {
+        $('#editSearchAirbnbExtras').hide()
+      }
     })
 
     // Select-all checkbox
@@ -344,10 +374,15 @@ function searchesfunc()
     const formData = $(this).serializeObject()
     const runNow = $(this).data('runNow')
     const jobId = $(this).data('jobId')
+    const platform = $(this).data('platform')
+    if(platform === 'airbnb') formData.gridDepth = Number(formData.gridDepth) || 1
+    else delete formData.gridDepth
     APIupdateJob(formData, ()=>{
       $('#editSearchModal').modal('hide')
       if(runNow) {
-        APIresetJob(JSON.stringify({jobId: jobId}), ()=>{
+        const resetParams = { jobId: jobId }
+        if(platform === 'airbnb') resetParams.gridDepth = formData.gridDepth
+        APIresetJob(JSON.stringify(resetParams), ()=>{
           setTimeout(()=>{renderpage('searches')},300)
         })
       } else {

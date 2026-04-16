@@ -737,7 +737,7 @@ module.exports = {
 			catch(err){Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})}
 
 			try{
-				await params.db.get('users').update({"jobs.id":params.jobId},{"$set": {"jobs.$.statusCode":1}})
+				await params.db.get('users').update({"jobs": {$elemMatch: {id: params.jobId, statusCode: 2}}},{"$set": {"jobs.$.statusCode":1}})
 			}
 			catch(err){Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})}
 		}

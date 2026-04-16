@@ -182,6 +182,12 @@ app.post('/deleteJob', [
 	Helpers.router.finish(req, res, Controllers.jobs.deleteJob);
 });
 
+app.post('/stopJob', [
+  		check('jobId').exists(),
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.jobs.stopJob);
+});
+
 /*app.post('/rebuildJob', [
   		check('jobId').exists(),
 	], function(req, res, next) {

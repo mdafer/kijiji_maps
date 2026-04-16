@@ -53,6 +53,31 @@ function APIresetJob(params, callback=null)
     });
 }
 
+function APIstopJob(params, callback=null)
+{
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        contentType: "application/json",
+        url: apiURL+'stopJob',
+        data: params,
+        beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
+        success: function(data){
+            if(callback)
+                callback(data.meta)
+        },
+        error: function (err) {
+            alert(err.responseJSON.msg)
+            if(clearStorageErrorCodes.includes(err.responseJSON.status))
+            {
+                clearLocalStorage()
+                renderpage()
+            }
+            console.log(err.responseJSON)
+        }
+    })
+}
+
 function APIupdateJob(params, callback=null)
 {
     $.ajax({ 
