@@ -719,22 +719,32 @@ module.exports = {
 
 		// Extract bounding box from URL for grid subdivision
 		const origBbox = extractBbox(params.pageUrl)
+		let scrapeResult
 		if (origBbox) {
 			Helpers.logger.log({print: `Bounding box detected — grid subdivision enabled`, channels:params.jobId+'jobUpdate'})
-			await scrapeGrid(params, origPriceMin, origPriceMax, origBbox)
+			scrapeResult = await scrapeGrid(params, origPriceMin, origPriceMax, origBbox)
 		} else {
-			await scrapeRange(params, origPriceMin, origPriceMax, params.resumeOffset || 0)
+			scrapeResult = await scrapeRange(params, origPriceMin, origPriceMax, params.resumeOffset || 0)
 		}
 
 		// Clear resume offset now that the job finished
 		await params.db.get('users').update({"jobs.id": params.jobId}, {$unset: {"jobs.$.resumeOffset": ""}}).catch(() => {})
 
+		const aborted = scrapeResult === -1
+		const foundListings = typeof scrapeResult === 'number' && scrapeResult > 0
+
 		try{
-			try{
-				const result = await params.db.get('ads').remove({$and:[{["jobs."+params.jobId]:{ $exists: true}},{['jobs.'+params.jobId+'.fingerprint']: {$ne: params.fingerprint}}]})
-				Helpers.logger.log({print: `All expired ads have been removed! Removed: ${result.result.n} ads.`, channels:params.jobId+'jobUpdate'})
+			if (aborted) {
+				Helpers.logger.log({print: `Skipping expired-ads cleanup: job aborted before completion`, channels:params.jobId+'jobUpdate'})
+			} else if (!foundListings) {
+				Helpers.logger.log({print: `Skipping expired-ads cleanup: this run found 0 listings (soft-block or empty search) — preserving previously cached ads`, channels:params.jobId+'jobWarning'})
+			} else {
+				try{
+					const result = await params.db.get('ads').remove({$and:[{["jobs."+params.jobId]:{ $exists: true}},{['jobs.'+params.jobId+'.fingerprint']: {$ne: params.fingerprint}}]})
+					Helpers.logger.log({print: `All expired ads have been removed! Removed: ${result.result.n} ads.`, channels:params.jobId+'jobUpdate'})
+				}
+				catch(err){Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})}
 			}
-			catch(err){Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})}
 
 			try{
 				await params.db.get('users').update({"jobs": {$elemMatch: {id: params.jobId, statusCode: 2}}},{"$set": {"jobs.$.statusCode":1}})

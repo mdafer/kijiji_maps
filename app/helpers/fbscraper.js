@@ -723,17 +723,22 @@ module.exports = {
 	},
 
 	_finishJob: async function(params, pageNumber, callback = null) {
-		// Cleanup expired ads
-		try {
-			const result = await params.db.get('ads').remove({
-				$and: [
-					{ ['jobs.' + params.jobId]: { $exists: true } },
-					{ ['jobs.' + params.jobId + '.fingerprint']: { $ne: params.fingerprint } }
-				]
-			})
-			Helpers.logger.log({ print: `All expired ads have been removed! Removed: ${result.result.n} ads.`, channels: params.jobId + 'jobUpdate' })
-		} catch(err) {
-			Helpers.logger.log({ print: err, channels: params.jobId + 'jobWarning' })
+		// Only clean up expired ads if this run actually scraped listings.
+		// Otherwise (login wall, block, aborted), keep the cached ads from prior runs.
+		if (pageNumber > 0) {
+			try {
+				const result = await params.db.get('ads').remove({
+					$and: [
+						{ ['jobs.' + params.jobId]: { $exists: true } },
+						{ ['jobs.' + params.jobId + '.fingerprint']: { $ne: params.fingerprint } }
+					]
+				})
+				Helpers.logger.log({ print: `All expired ads have been removed! Removed: ${result.result.n} ads.`, channels: params.jobId + 'jobUpdate' })
+			} catch(err) {
+				Helpers.logger.log({ print: err, channels: params.jobId + 'jobWarning' })
+			}
+		} else {
+			Helpers.logger.log({ print: `Skipping expired-ads cleanup: this run scraped 0 pages (login wall, block, or aborted) — preserving previously cached ads`, channels: params.jobId + 'jobWarning' })
 		}
 
 		try {
