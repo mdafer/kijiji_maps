@@ -160,6 +160,7 @@ app.put('/job', [
 app.patch('/job', [
 		check('id').exists(),
 		check('name').optional().trim().escape(),
+  		check('url').optional().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com']})),
   		check('description').optional().trim().escape(),
   		check('displayAmenities').optional().trim().escape()
 	],function(req, res, next){

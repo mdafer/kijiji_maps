@@ -792,7 +792,7 @@ module.exports = {
 				url += '?' + qp.toString()
 			}
 			try{
-		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id), ['jobs.'+params.jobId]: {$exists: true}},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}, url}})
+		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id)},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}, url}})
 		    	if (doc){
 		    		// Optionally backfill missing details/availability for cached listings
 		    		const needsDetails = params.fetchDetails && ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1))

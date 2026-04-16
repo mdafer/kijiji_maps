@@ -140,6 +140,11 @@ var searchespage= `<!-- Content Header (Page header) -->
               <input id="searchNameBox" name="name" type="text" class="form-control" placeholder="Name" required>
             </div>
 
+            <div class="form-group">
+              <label>Search URL</label>
+              <input id="searchUrlBox" name="url" type="url" class="form-control" placeholder="https://" required>
+            </div>
+
             <!-- textarea -->
             <div class="form-group">
               <label>Search Description</label>
@@ -154,7 +159,8 @@ var searchespage= `<!-- Content Header (Page header) -->
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
         </div>
         <div class="pull-right">
-          <button type="button" class="btn btn-primary" onclick="$('#editSearchForm').submit();">Save</button>
+          <button type="button" class="btn btn-primary" onclick="$('#editSearchForm').data('runNow', false).submit();">Save</button>
+          <button type="button" class="btn btn-success" onclick="$('#editSearchForm').data('runNow', true).submit();">Run Now</button>
         </div>
       </div>
     </div>
@@ -249,7 +255,7 @@ function searchesfunc()
           <td><a target="_blank" href="${filteredJobs[i].url}">${linkLabel}</a></td>
         </tr>
       `)
-      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data)
+      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('url', filteredJobs[i].url).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data)
       $( "#searchesTBody .delSearchBtn" ).last().data('id', filteredJobs[i].id)
       $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
     }
@@ -273,8 +279,10 @@ function searchesfunc()
     $('.editSearchBtn').on('click', function(event){
       event.preventDefault();
       var jobIdForEdit = $(this).data('id')
+      $('#editSearchForm').data('jobId', jobIdForEdit)
       $('#searchId').val(jobIdForEdit)
       $('#searchNameBox').val($(this).data('name'))
+      $('#searchUrlBox').val($(this).data('url'))
       $('#searchDescriptionBox').val($(this).data('description'))
     })
 
@@ -333,7 +341,19 @@ function searchesfunc()
   })
   $('#editSearchForm').on('submit', function(event) {
     event.preventDefault();
-    APIupdateJob($('#editSearchForm').serializeObject(), ()=>{$('#editSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
+    const formData = $(this).serializeObject()
+    const runNow = $(this).data('runNow')
+    const jobId = $(this).data('jobId')
+    APIupdateJob(formData, ()=>{
+      $('#editSearchModal').modal('hide')
+      if(runNow) {
+        APIresetJob(JSON.stringify({jobId: jobId}), ()=>{
+          setTimeout(()=>{renderpage('searches')},300)
+        })
+      } else {
+        setTimeout(()=>{renderpage('searches')},300)
+      }
+    })
   })
 
   

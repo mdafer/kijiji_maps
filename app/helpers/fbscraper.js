@@ -781,7 +781,7 @@ module.exports = {
 			try {
 				// Check cache first
 				let doc = await params.db.get('ads').findOneAndUpdate(
-					{ 'facebookId': String(listing.id), ['jobs.' + params.jobId]: { $exists: true } },
+					{ 'facebookId': String(listing.id) },
 					{ $set: { ['jobs.' + params.jobId]: { fingerprint: params.fingerprint }, url } }
 				)
 				if (doc) {
