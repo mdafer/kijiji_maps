@@ -172,8 +172,19 @@
     <button class="gallery-close" onclick="closePhotoGallery()">&times;</button>
     <div id="photoGalleryContent"></div>
   </div>
-  <div id="photoGalleryZoom" onclick="closePhotoZoom()">
-    <img id="photoGalleryZoomImg" src="">
+  <div id="photoGalleryZoom" onclick="if(event.target===this||event.target.classList.contains('zoom-img-wrap'))closePhotoZoom()">
+    <button class="zoom-nav zoom-prev" onclick="event.stopPropagation();photoZoomPrev()" title="Previous (&larr;)">&#10094;</button>
+    <button class="zoom-nav zoom-next" onclick="event.stopPropagation();photoZoomNext()" title="Next (&rarr;)">&#10095;</button>
+    <div class="zoom-img-wrap">
+      <img id="photoGalleryZoomImg" src="" onclick="event.stopPropagation()">
+    </div>
+    <div class="zoom-controls" onclick="event.stopPropagation()">
+      <button onclick="photoZoomOut()" title="Zoom out (-)"><i class="fa fa-search-minus"></i></button>
+      <span id="photoZoomLevel">100%</span>
+      <button onclick="photoZoomIn()" title="Zoom in (+)"><i class="fa fa-search-plus"></i></button>
+      <button onclick="photoZoomReset()" title="Reset (0)"><i class="fa fa-refresh"></i></button>
+      <span id="photoZoomCounter" style="margin-left:10px"></span>
+    </div>
   </div>
   <!-- Availability Calendar Overlay -->
   <div id="availabilityOverlay" onclick="if(event.target===this)closeAvailabilityCalendar()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:10005;overflow-y:auto;padding:20px;">
@@ -439,6 +450,11 @@
   // Manual paste flow — when backend is soft-blocked, show inline UI in information modal
   socket.on('needManualResponse', function(data) {
     window._pendingManualRequestId = data.requestId
+    // If user previously opted in to auto-confirm empty for remaining soft-blocks, skip the UI
+    if (window._airbnbAutoConfirmEmpty) {
+      socket.emit('manualResponse', { requestId: data.requestId, json: JSON.stringify({ manualEmpty: true }) })
+      return
+    }
     // Ensure the info modal is visible
     if (!$('#informationModal').hasClass('in')) {
       $('#informationModal').modal('show')
@@ -467,6 +483,7 @@
               '<button class="btn btn-primary btn-sm" onclick="submitManualPaste()">Submit Response</button> ' +
               '<button class="btn btn-success btn-sm" onclick="confirmEmptyPaste()">Confirm Empty</button> ' +
               '<button class="btn btn-default btn-sm" onclick="skipFoldPaste()">Retry Later</button> ' +
+              '<label style="margin-left:8px;font-weight:normal;cursor:pointer"><input type="checkbox" id="autoConfirmEmptyChk" onchange="window._airbnbAutoConfirmEmpty = this.checked"' + (window._airbnbAutoConfirmEmpty ? ' checked' : '') + '> Auto confirm empty</label> ' +
               '<span id="manualPasteError" style="color:#a94442;margin-left:8px;font-weight:600"></span>' +
             '</div>' +
           '</div>' +

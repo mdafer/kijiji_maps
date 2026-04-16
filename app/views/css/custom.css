@@ -239,18 +239,88 @@ tr td{
     top:0;left:0;right:0;bottom:0;
     z-index:10001;
     background:rgba(0,0,0,.95);
-    cursor:zoom-out;
-    align-items:center;
-    justify-content:center;
+    overflow:auto;
 }
 #photoGalleryZoom.active{
-    display:flex;
+    display:block;
 }
-#photoGalleryZoom img{
+#photoGalleryZoom .zoom-img-wrap{
+    min-height:100vh;
+    min-width:100vw;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    box-sizing:border-box;
+    cursor:zoom-out;
+}
+#photoGalleryZoom img#photoGalleryZoomImg{
     max-width:95vw;
     max-height:95vh;
     object-fit:contain;
     border-radius:4px;
+    cursor:default;
+    transition:max-width .12s ease, max-height .12s ease;
+}
+#photoGalleryZoom .zoom-nav{
+    position:fixed;
+    top:50%;
+    transform:translateY(-50%);
+    background:rgba(0,0,0,.5);
+    color:#fff;
+    border:none;
+    border-radius:50%;
+    width:48px;
+    height:48px;
+    font-size:22px;
+    cursor:pointer;
+    z-index:10003;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+}
+#photoGalleryZoom .zoom-nav:hover{
+    background:rgba(0,0,0,.8);
+}
+#photoGalleryZoom .zoom-nav.zoom-prev{ left:18px; }
+#photoGalleryZoom .zoom-nav.zoom-next{ right:18px; }
+#photoGalleryZoom .zoom-nav[disabled]{
+    opacity:.3;
+    cursor:not-allowed;
+}
+#photoGalleryZoom .zoom-controls{
+    position:fixed;
+    bottom:18px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,.65);
+    border-radius:24px;
+    padding:6px 14px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:#fff;
+    font-size:13px;
+    z-index:10003;
+}
+#photoGalleryZoom .zoom-controls button{
+    background:transparent;
+    border:none;
+    color:#fff;
+    font-size:16px;
+    cursor:pointer;
+    width:32px;
+    height:32px;
+    border-radius:50%;
+}
+#photoGalleryZoom .zoom-controls button:hover{
+    background:rgba(255,255,255,.15);
+}
+#photoGalleryZoom #photoZoomLevel{
+    min-width:46px;
+    text-align:center;
+    font-weight:600;
 }
 
 /* Grid View - Cards Mode */

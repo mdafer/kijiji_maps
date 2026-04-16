@@ -262,7 +262,7 @@ function buildRowHtml(ad) {
       imagesHtml += '<div class="grid-row-cat-title">'+cat+'</div>'
       imagesHtml += '<div class="grid-row-images">'
       multiCats[cat].forEach(function(url) {
-        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
       })
       imagesHtml += '</div></div>'
     })
@@ -274,7 +274,7 @@ function buildRowHtml(ad) {
       singleKeys.forEach(function(cat) {
         var url = singleCats[cat][0]
         imagesHtml += '<div class="grid-row-img-labeled">'
-        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
         imagesHtml += '<span class="grid-row-img-label">'+cat+'</span>'
         imagesHtml += '</div>'
       })
@@ -284,7 +284,7 @@ function buildRowHtml(ad) {
   } else {
     imagesHtml = '<div class="grid-row-images-wrap"><div class="grid-row-images">'
     pics.forEach(function(url) {
-      imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+      imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
     })
     imagesHtml += '</div></div>'
   }
@@ -309,6 +309,8 @@ function buildRowHtml(ad) {
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
   html += '    '+amenityHtml
   html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  var totalPics = (ad.picture_urls && ad.picture_urls.length) || (ad.picture_url ? 1 : 0)
+  if(totalPics > 0) html += '    <button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))" title="Photo slideshow" style="margin-left:4px"><i class="fa fa-camera"></i> '+totalPics+'</button>'
   if(ad.platform === 'airbnb') {
     if(ad.availability) html += '    <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability" style="margin-left:4px"><i class="fa fa-calendar"></i> Availability</button>'
     else html += '    <button class="btn btn-xs btn-default" style="margin-left:4px;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'

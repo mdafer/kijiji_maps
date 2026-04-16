@@ -295,7 +295,7 @@ function openPhotoGallery(data)
       html += '<h3 class="gallery-cat-title">'+cat+'</h3>'
       html += '<div class="gallery-cat-grid">'
       multiCats[cat].forEach(function(url) {
-        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
       })
       html += '</div></div>'
     })
@@ -309,7 +309,7 @@ function openPhotoGallery(data)
       singleKeys.forEach(function(cat) {
         var url = singleCats[cat][0]
         html += '<div class="gallery-thumb-labeled">'
-        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
         html += '<span class="gallery-thumb-label">'+cat+'</span>'
         html += '</div>'
       })
@@ -317,7 +317,7 @@ function openPhotoGallery(data)
     }
   } else {
     urls.forEach(function(url){
-      html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this.src)">'
+      html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
     })
   }
   $('#photoGalleryContent').html(html)
@@ -332,16 +332,124 @@ function closePhotoGallery()
   $('body').css('overflow','')
 }
 
-function openPhotoZoom(src)
+var _photoZoomUrls = []
+var _photoZoomIndex = 0
+var _photoZoomScale = 1
+var PHOTO_ZOOM_MIN = 0.25
+var PHOTO_ZOOM_MAX = 6
+var PHOTO_ZOOM_STEP = 0.25
+
+function openPhotoZoom(srcOrEl, listEl)
 {
-  $('#photoGalleryZoomImg').attr('src', src)
+  var el = null
+  if(srcOrEl && srcOrEl.nodeType === 1) el = srcOrEl
+  else if(typeof event !== 'undefined' && event && event.target && event.target.tagName === 'IMG') el = event.target
+
+  var urls = [], idx = 0
+  if(el) {
+    var scope = null
+    if(listEl && listEl.nodeType === 1) scope = listEl
+    else if(el.closest) scope = el.closest('.grid-row-item') || (el.closest('#photoGalleryOverlay') ? document.getElementById('photoGalleryContent') : null)
+    var selector = 'img.gallery-thumb, img.grid-row-img'
+    var imgs = scope ? scope.querySelectorAll(selector) : [el]
+    imgs = Array.prototype.slice.call(imgs)
+    urls = imgs.map(function(i){ return i.src || i.getAttribute('data-src') || '' }).filter(function(u){ return u })
+    var elSrc = el.src || el.getAttribute('data-src') || ''
+    idx = urls.indexOf(elSrc)
+    if(idx < 0) { urls.unshift(elSrc); idx = 0 }
+  } else {
+    urls = [String(srcOrEl)]
+    idx = 0
+  }
+
+  _photoZoomUrls = urls
+  _photoZoomIndex = idx
+  _photoZoomScale = 1
+  _showPhotoZoom()
   $('#photoGalleryZoom').addClass('active')
+  $(document).off('keydown.photoZoom').on('keydown.photoZoom', _photoZoomKey)
+}
+
+function _showPhotoZoom()
+{
+  var src = _photoZoomUrls[_photoZoomIndex] || ''
+  $('#photoGalleryZoomImg').attr('src', src)
+  _applyPhotoZoomScale()
+  var total = _photoZoomUrls.length
+  $('#photoZoomCounter').text(total > 1 ? (_photoZoomIndex + 1) + ' / ' + total : '')
+  $('#photoGalleryZoom .zoom-prev, #photoGalleryZoom .zoom-next').toggle(total > 1)
+  $('#photoGalleryZoom .zoom-prev').prop('disabled', _photoZoomIndex <= 0)
+  $('#photoGalleryZoom .zoom-next').prop('disabled', _photoZoomIndex >= total - 1)
+}
+
+function _applyPhotoZoomScale()
+{
+  var pct = Math.round(_photoZoomScale * 100)
+  $('#photoGalleryZoomImg').css({
+    'max-width': (95 * _photoZoomScale) + 'vw',
+    'max-height': (95 * _photoZoomScale) + 'vh'
+  })
+  $('#photoZoomLevel').text(pct + '%')
+}
+
+function photoZoomNext()
+{
+  if(_photoZoomIndex < _photoZoomUrls.length - 1) {
+    _photoZoomIndex++
+    _photoZoomScale = 1
+    _showPhotoZoom()
+  }
+}
+
+function photoZoomPrev()
+{
+  if(_photoZoomIndex > 0) {
+    _photoZoomIndex--
+    _photoZoomScale = 1
+    _showPhotoZoom()
+  }
+}
+
+function photoZoomIn()
+{
+  _photoZoomScale = Math.min(PHOTO_ZOOM_MAX, +(_photoZoomScale + PHOTO_ZOOM_STEP).toFixed(2))
+  _applyPhotoZoomScale()
+}
+
+function photoZoomOut()
+{
+  _photoZoomScale = Math.max(PHOTO_ZOOM_MIN, +(_photoZoomScale - PHOTO_ZOOM_STEP).toFixed(2))
+  _applyPhotoZoomScale()
+}
+
+function photoZoomReset()
+{
+  _photoZoomScale = 1
+  _applyPhotoZoomScale()
+  $('#photoGalleryZoom').scrollTop(0).scrollLeft(0)
+}
+
+function _photoZoomKey(e)
+{
+  if(!$('#photoGalleryZoom').hasClass('active')) return
+  switch(e.which) {
+    case 37: photoZoomPrev(); e.preventDefault(); break
+    case 39: photoZoomNext(); e.preventDefault(); break
+    case 38: case 107: case 187: photoZoomIn(); e.preventDefault(); break
+    case 40: case 109: case 189: photoZoomOut(); e.preventDefault(); break
+    case 48: case 96: photoZoomReset(); e.preventDefault(); break
+    case 27: closePhotoZoom(); e.preventDefault(); break
+  }
 }
 
 function closePhotoZoom()
 {
   $('#photoGalleryZoom').removeClass('active')
-  $('#photoGalleryZoomImg').attr('src', '')
+  $('#photoGalleryZoomImg').attr('src', '').css({'max-width':'', 'max-height':''})
+  _photoZoomUrls = []
+  _photoZoomIndex = 0
+  _photoZoomScale = 1
+  $(document).off('keydown.photoZoom')
 }
 
 function openAvailabilityCalendar(adId) {
