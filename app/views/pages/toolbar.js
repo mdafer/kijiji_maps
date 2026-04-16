@@ -341,9 +341,8 @@ function _handleNewAd(data) {
   if(typeof setMarkersByAds === 'function' && typeof map !== 'undefined' && map) {
     setMarkersByAds(map, [ad], false)
     $('.resultscount').html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
-  } else if(typeof loadGridAds === 'function' && window.currentState === 'grid') {
-    // Grid view doesn't append in-place; fall back to its existing refetch path
-    loadGridAds($('#filtersForm').serialize())
+  } else if(typeof appendGridAd === 'function' && window.currentState === 'grid') {
+    appendGridAd(ad)
   }
 }
 

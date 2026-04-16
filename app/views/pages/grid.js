@@ -134,6 +134,43 @@ function setGridMode(mode) {
   renderGrid()
 }
 
+function appendGridAd(ad) {
+  if(!ad || !ad._id) return
+  for(var i = 0; i < _gridAds.length; i++) {
+    if(_gridAds[i]._id === ad._id) return
+  }
+  if(hasActiveShapeFilter() && !isInsideShapeFilter(ad.lat, ad.lon)) return
+  if(_favoritesOnly && !isFavorite(ad._id)) return
+
+  _gridAds.push(ad)
+  if(ad.amenities && ad.amenities.length)
+    ad.amenities.forEach(function(a){ _allAmenities.add(a) })
+  if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+
+  var inner = document.getElementById('gridInner')
+  // Only append to DOM if infinite-scroll is fully caught up; otherwise the
+  // next scroll batch will render it naturally from _gridAds.
+  if(inner && _gridRenderedCount === _gridAds.length - 1) {
+    var html = _gridMode === 'cards' ? buildCardHtml(ad) : buildRowHtml(ad)
+    var tmp = document.createElement('div')
+    tmp.innerHTML = html
+    var node = tmp.firstChild
+    if(node) {
+      inner.appendChild(node)
+      observeLazyImages(inner)
+      _gridRenderedCount++
+    }
+  }
+
+  var base = 'Results: ' + _gridAds.length
+  if(_favoritesOnly) base += ' (favorites)'
+  if(hasActiveShapeFilter()) base += ' (area filtered)'
+  if(_gridRenderedCount < _gridAds.length)
+    $('.resultscount').text(base + ' (showing ' + _gridRenderedCount + ')')
+  else
+    $('.resultscount').text(base)
+}
+
 function renderGrid() {
   var container = $('#gridContainer')
   container.empty()
