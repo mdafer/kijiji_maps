@@ -26,7 +26,12 @@ function setRowCollapsed(adId, collapsed) {
 }
 
 function gridfunc() {
+  // Restore _gridMode/_currentSort before setViewMode so the toolbar highlight
+  // and uncollapse-all button visibility match the saved mode on refresh.
+  restoreSort()
+  restoreGridMode()
   setViewMode('grid')
+  updateSortLabel()
   $('#pageTitle').text(jobName + (_favoritesOnly ? ' - Favorites' : ''))
   $('#filterJobId').val(jobId)
 
@@ -72,9 +77,6 @@ function gridfunc() {
     loadGridAds($('#filtersForm').serialize())
   })
 
-  restoreSort()
-  restoreGridMode()
-  updateSortLabel()
   setupSocketListeners()
   loadGridAds($('#filtersForm').serialize())
 }
