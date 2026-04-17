@@ -11,6 +11,20 @@ var _gridBatchSize = 50
 var _gridScrollTimer = null
 var _currentSort = null
 
+function getCollapsedRowIds() {
+  try { return JSON.parse(localStorage.getItem('collapsedRowIds') || '[]') } catch(e) { return [] }
+}
+function isRowCollapsed(adId) {
+  return getCollapsedRowIds().indexOf(adId) !== -1
+}
+function setRowCollapsed(adId, collapsed) {
+  var ids = getCollapsedRowIds()
+  var idx = ids.indexOf(adId)
+  if(collapsed && idx === -1) ids.push(adId)
+  else if(!collapsed && idx !== -1) ids.splice(idx, 1)
+  localStorage.setItem('collapsedRowIds', JSON.stringify(ids))
+}
+
 function gridfunc() {
   setViewMode('grid')
   $('#pageTitle').text(jobName + (_favoritesOnly ? ' - Favorites' : ''))
@@ -341,7 +355,8 @@ function buildRowHtml(ad) {
     }
   }
 
-  var html = '<div class="grid-row-item" data-adid="'+ad._id+'">'
+  var collapsedClass = isRowCollapsed(ad._id) ? ' collapsed' : ''
+  var html = '<div class="grid-row-item'+collapsedClass+'" data-adid="'+ad._id+'">'
   html += '  <div class="grid-row-header">'
   html += '    <button class="grid-row-collapse-btn" onclick="toggleRowCollapse(this)" title="Collapse/expand"><i class="fa fa-chevron-up"></i></button>'
   html += '    <span class="grid-row-title" title="'+ad.title+'">'+ad.title+'</span>'
@@ -370,6 +385,7 @@ function toggleRowCollapse(btn) {
   var $item = $(btn).closest('.grid-row-item')
   var isCollapsing = !$item.hasClass('collapsed')
   $item.toggleClass('collapsed')
+  setRowCollapsed($item.data('adid'), isCollapsing)
   if(isCollapsing) {
     // Scroll so the listing header is at the top of the viewport
     var $cw = $('.content-wrapper')

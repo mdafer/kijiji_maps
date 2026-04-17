@@ -168,7 +168,7 @@
 
   </div>
   <!-- Photo Gallery Overlay -->
-  <div id="photoGalleryOverlay" onclick="if(event.target===this)closePhotoGallery()">
+  <div id="photoGalleryOverlay" onclick="if(!event.target.closest('.gallery-thumb,.gallery-close'))closePhotoGallery()">
     <button class="gallery-close" onclick="closePhotoGallery()">&times;</button>
     <div id="photoGalleryContent"></div>
   </div>
