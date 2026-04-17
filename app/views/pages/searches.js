@@ -22,21 +22,24 @@ var searchespage= `<!-- Content Header (Page header) -->
 
         <div class="box box-info" data-ol-has-click-handler="">
             <div class="box-header with-border">
-              <h3 class="box-title">Search Jobs</h3>
+              <h3 class="box-title" style="display:inline-block;margin-right:12px">Search Jobs</h3>
+              <div class="pull-right" style="max-width:260px">
+                <input type="text" id="searchesFilterInput" class="form-control input-sm" placeholder="Filter by name...">
+              </div>
             </div>
             <!-- /.box-header -->
             <div class="box-body">
               <div class="table-responsive">
-                <table class="table no-margin">
+                <table id="searchesTable" class="table no-margin">
                   <thead>
                   <tr>
                     <th><input type="checkbox" id="selectAllSearches" title="Select all"></th>
                     <th>Actions</th>
-                    <th>Platform</th>
-                    <th>Status</th>
-                    <th>Name</th>
+                    <th class="sortable" data-sort="platform" style="cursor:pointer;user-select:none">Platform</th>
+                    <th class="sortable" data-sort="status" style="cursor:pointer;user-select:none">Status</th>
+                    <th class="sortable" data-sort="name" style="cursor:pointer;user-select:none">Name</th>
                     <th>Description</th>
-                    <th>Last Updated</th>
+                    <th class="sortable" data-sort="lastUpdated" style="cursor:pointer;user-select:none">Last Updated</th>
                     <th>Link</th>
                   </tr>
                   </thead>
@@ -150,9 +153,15 @@ var searchespage= `<!-- Content Header (Page header) -->
               <label>Search Description</label>
               <textarea id ="searchDescriptionBox" name="description" class="form-control" rows="3" placeholder="Description"></textarea>
             </div>
-            <div id="editSearchAirbnbExtras" class="form-group" style="display:none">
-              <label>Grid Splits <i class="fa fa-question-circle BStooltip" style="cursor:help" data-placement="top" title="Splits the map area into smaller cells to find more listings. Depth 1 = 4 cells, 2 = 16 cells, 3 = 64 cells, 4 = 256 cells. Dense areas auto-split further if results are capped."></i></label>
-              <input id="searchGridDepthBox" name="gridDepth" type="number" class="form-control" min="1" max="4" placeholder="1 (default)">
+            <div id="editSearchAirbnbExtras" style="display:none">
+              <div class="form-group">
+                <label>URL Parameters</label>
+                <div id="editSearchUrlParams" class="row"></div>
+              </div>
+              <div class="form-group">
+                <label>Grid Splits <i class="fa fa-question-circle BStooltip" style="cursor:help" data-placement="top" title="Splits the map area into smaller cells to find more listings. Depth 1 = 4 cells, 2 = 16 cells, 3 = 64 cells, 4 = 256 cells. Dense areas auto-split further if results are capped."></i></label>
+                <input id="searchGridDepthBox" name="gridDepth" type="number" class="form-control" min="1" max="4" placeholder="1 (default)">
+              </div>
             </div>
             <input type="submit" value="Submit" style="display:none;">
           </form>
@@ -177,6 +186,27 @@ var searchespage= `<!-- Content Header (Page header) -->
 function searchesfunc()
 {
   $('#searchesTBody').html('')
+  $(document).off('click.searchesActions')
+  _searchesNameFilter = ''
+  _searchesSort = null
+  if(_searchesFilterTimer) { clearTimeout(_searchesFilterTimer); _searchesFilterTimer = null }
+  $('#searchesFilterInput').val('').off('input.searchesFilter').on('input.searchesFilter', function() {
+    var val = $(this).val()
+    if(_searchesFilterTimer) clearTimeout(_searchesFilterTimer)
+    _searchesFilterTimer = setTimeout(function() {
+      _searchesFilterTimer = null
+      _searchesNameFilter = val
+      renderSearchesTable()
+    }, 200)
+  })
+  $('#searchesTable').off('click.searchesSort').on('click.searchesSort', 'th.sortable', function() {
+    var field = $(this).data('sort')
+    if(_searchesSort && _searchesSort.field === field)
+      _searchesSort.dir = _searchesSort.dir === 'asc' ? 'desc' : 'asc'
+    else
+      _searchesSort = { field: field, dir: field === 'lastUpdated' ? 'desc' : 'asc' }
+    renderSearchesTable()
+  })
 
   // Set platform filter from URL params
   var searchPlatformFilter = urlParams.platform || null
@@ -217,57 +247,10 @@ function searchesfunc()
     }
     jobs = user.jobs
     // Filter by platform if specified
-    var filteredJobs = searchPlatformFilter ? user.jobs.filter(j => (j.platform || 'kijiji') === searchPlatformFilter) : user.jobs
-    for(let i=0;i< filteredJobs.length;i++)
-    {
-      let statusDom;
-      switch(filteredJobs[i].statusCode)
-      {
-        case 0:
-          statusDom = '<td><span class="label label-danger">Failed</span></td>'
-        break
-        case 1:
-          statusDom = '<td><span class="label label-success">Completed</span></td>'
-        break
-        case 2:
-          statusDom = '<td><span class="label label-warning">Pending</span></td>'
-        break
-      }
-      let platform = filteredJobs[i].platform || (filteredJobs[i].url && filteredJobs[i].url.includes('airbnb') ? 'airbnb' : filteredJobs[i].url && filteredJobs[i].url.includes('facebook.com') ? 'facebook' : 'kijiji')
-      let platformLabel = platform === 'airbnb'
-        ? '<td><span class="label label-danger">Airbnb</span></td>'
-        : platform === 'facebook'
-        ? '<td><span class="label label-primary">Facebook</span></td>'
-        : '<td><span class="label label-info">Kijiji</span></td>'
-      let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : platform === 'facebook' ? 'FB Marketplace Link' : 'Kijiji Link'
-      let descriptionHtml = filteredJobs[i].description
-      if(platform === 'airbnb') {
-        let airbnbDetails = formatAirbnbDetails(filteredJobs[i].url)
-        if(airbnbDetails) descriptionHtml = airbnbDetails + (filteredJobs[i].description ? '<br><small class="text-muted">' + filteredJobs[i].description + '</small>' : '')
-      }
-      $('#searchesTBody').append(`
-        <tr>
-          <td><input type="checkbox" class="searchSelectCb" data-jobid="${filteredJobs[i].id}" data-jobname="${filteredJobs[i].name}"></td>
-          <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
-          ${filteredJobs[i].statusCode === 2 ? `<button type="button" class="btn btn-warning stopSearchBtn BStooltip" rel="tooltip" data-placement="top" title="stop"><i class="fa fa-stop"></i></button>` : ''}
-          <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
-          </td>
-          ${platformLabel}
-          ${statusDom}
-          <td><a href="/index.html#map?jobId=${filteredJobs[i].id}&jobName=${filteredJobs[i].name}&platform=${platform}">${filteredJobs[i].name}</a></td>
-          <td>${descriptionHtml}</td>
-          <td>${filteredJobs[i].lastUpdated ? new Date(filteredJobs[i].lastUpdated).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
-          <td><a target="_blank" href="${filteredJobs[i].url}">${linkLabel}</a></td>
-        </tr>
-      `)
-      $( "#searchesTBody .editSearchBtn" ).last().data('id', filteredJobs[i].id).data('name',$.parseHTML(filteredJobs[i].name || ' ')[0].data).data('url', filteredJobs[i].url).data('description',$.parseHTML(filteredJobs[i].description||' ')[0].data).data('platform', platform).data('gridDepth', filteredJobs[i].gridDepth || 1)
-      $( "#searchesTBody .delSearchBtn" ).last().data('id', filteredJobs[i].id)
-      if(filteredJobs[i].statusCode === 2)
-        $( "#searchesTBody .stopSearchBtn" ).last().data('id', filteredJobs[i].id).data('name', filteredJobs[i].name)
-      $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
-    }
+    _searchesJobs = searchPlatformFilter ? user.jobs.filter(j => (j.platform || 'kijiji') === searchPlatformFilter) : user.jobs
+    renderSearchesTable()
 
-    $('.stopSearchBtn').on('click', function(event){
+    $(document).on('click.searchesActions', '#searchesTBody .stopSearchBtn', function(event){
       event.preventDefault();
       var stopId = $(this).data('id')
       var stopName = $(this).data('name') || 'this search'
@@ -283,7 +266,7 @@ function searchesfunc()
       )
     })
 
-    $('.delSearchBtn').on('click', function(event){
+    $(document).on('click.searchesActions', '#searchesTBody .delSearchBtn', function(event){
       event.preventDefault();
       var delId = $(this).data('id')
       showConfirmModal(
@@ -299,7 +282,7 @@ function searchesfunc()
       )
     })
 
-    $('.editSearchBtn').on('click', function(event){
+    $(document).on('click.searchesActions', '#searchesTBody .editSearchBtn', function(event){
       event.preventDefault();
       var jobIdForEdit = $(this).data('id')
       var jobPlatform = $(this).data('platform')
@@ -310,9 +293,11 @@ function searchesfunc()
       $('#searchDescriptionBox').val($(this).data('description'))
       if(jobPlatform === 'airbnb') {
         $('#searchGridDepthBox').val($(this).data('gridDepth'))
+        renderAirbnbUrlParamFields($(this).data('url'))
         $('#editSearchAirbnbExtras').show()
       } else {
         $('#editSearchAirbnbExtras').hide()
+        $('#editSearchUrlParams').empty()
       }
     })
 
@@ -369,6 +354,14 @@ function searchesfunc()
     }
     APIaddNewSearch(formData, ()=>{$('#newSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
   })
+  $('#editSearchUrlParams').off('input.airbnbParams change.airbnbParams')
+    .on('input.airbnbParams change.airbnbParams', '.airbnb-param-input', syncAirbnbUrlFromFields)
+  $('#searchUrlBox').off('input.airbnbParams change.airbnbParams')
+    .on('input.airbnbParams change.airbnbParams', function() {
+      if($('#editSearchForm').data('platform') === 'airbnb')
+        renderAirbnbUrlParamFields($(this).val())
+    })
+
   $('#editSearchForm').on('submit', function(event) {
     event.preventDefault();
     const formData = $(this).serializeObject()
@@ -506,10 +499,160 @@ function formatAirbnbDetails(url) {
   return parts.join(' &middot; ')
 }
 
+var _searchesJobs = []
+var _searchesNameFilter = ''
+var _searchesSort = null
+var _searchesFilterTimer = null
+
+function renderSearchesTable() {
+  var jobs = _searchesJobs.slice()
+  var q = _searchesNameFilter.trim().toLowerCase()
+  if(q) jobs = jobs.filter(function(j){ return (j.name || '').toLowerCase().indexOf(q) !== -1 })
+  if(_searchesSort) {
+    var f = _searchesSort.field, d = _searchesSort.dir
+    jobs.sort(function(a, b) {
+      var va, vb
+      if(f === 'lastUpdated') {
+        va = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0
+        vb = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0
+        return d === 'asc' ? va - vb : vb - va
+      }
+      if(f === 'status') {
+        va = a.statusCode == null ? -1 : a.statusCode
+        vb = b.statusCode == null ? -1 : b.statusCode
+        return d === 'asc' ? va - vb : vb - va
+      }
+      if(f === 'platform') {
+        va = (a.platform || (a.url && a.url.includes('airbnb') ? 'airbnb' : a.url && a.url.includes('facebook.com') ? 'facebook' : 'kijiji'))
+        vb = (b.platform || (b.url && b.url.includes('airbnb') ? 'airbnb' : b.url && b.url.includes('facebook.com') ? 'facebook' : 'kijiji'))
+      } else {
+        va = (a[f] || '').toString().toLowerCase()
+        vb = (b[f] || '').toString().toLowerCase()
+      }
+      return d === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+    })
+  }
+  _renderSearchesRows(jobs)
+  _updateSearchesSortIndicators()
+  updateViewSelectedBtn()
+}
+
+function _renderSearchesRows(jobs) {
+  var $tbody = $('#searchesTBody')
+  $tbody.html('')
+  if(!jobs.length) {
+    $tbody.append('<tr><td colspan="8" class="text-muted" style="text-align:center;padding:16px">No searches match.</td></tr>')
+    return
+  }
+  for(let i = 0; i < jobs.length; i++) {
+    let job = jobs[i]
+    let statusDom
+    switch(job.statusCode) {
+      case 0: statusDom = '<td><span class="label label-danger">Failed</span></td>'; break
+      case 1: statusDom = '<td><span class="label label-success">Completed</span></td>'; break
+      case 2: statusDom = '<td><span class="label label-warning">Pending</span></td>'; break
+      default: statusDom = '<td></td>'
+    }
+    let platform = job.platform || (job.url && job.url.includes('airbnb') ? 'airbnb' : job.url && job.url.includes('facebook.com') ? 'facebook' : 'kijiji')
+    let platformLabel = platform === 'airbnb'
+      ? '<td><span class="label label-danger">Airbnb</span></td>'
+      : platform === 'facebook'
+      ? '<td><span class="label label-primary">Facebook</span></td>'
+      : '<td><span class="label label-info">Kijiji</span></td>'
+    let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : platform === 'facebook' ? 'FB Marketplace Link' : 'Kijiji Link'
+    let descriptionHtml = job.description
+    if(platform === 'airbnb') {
+      let airbnbDetails = formatAirbnbDetails(job.url)
+      if(airbnbDetails) descriptionHtml = airbnbDetails + (job.description ? '<br><small class="text-muted">' + job.description + '</small>' : '')
+    }
+    $tbody.append(`
+      <tr>
+        <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}"></td>
+        <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
+        ${job.statusCode === 2 ? `<button type="button" class="btn btn-warning stopSearchBtn BStooltip" rel="tooltip" data-placement="top" title="stop"><i class="fa fa-stop"></i></button>` : ''}
+        <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
+        </td>
+        ${platformLabel}
+        ${statusDom}
+        <td><a href="/index.html#map?jobId=${job.id}&jobName=${job.name}&platform=${platform}">${job.name}</a></td>
+        <td>${descriptionHtml}</td>
+        <td>${job.lastUpdated ? new Date(job.lastUpdated).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
+        <td><a target="_blank" href="${job.url}">${linkLabel}</a></td>
+      </tr>
+    `)
+    $('#searchesTBody .editSearchBtn').last().data('id', job.id).data('name', $.parseHTML(job.name || ' ')[0].data).data('url', job.url).data('description', $.parseHTML(job.description || ' ')[0].data).data('platform', platform).data('gridDepth', job.gridDepth || 1)
+    $('#searchesTBody .delSearchBtn').last().data('id', job.id)
+    if(job.statusCode === 2)
+      $('#searchesTBody .stopSearchBtn').last().data('id', job.id).data('name', job.name)
+  }
+  $('.BStooltip').tooltip({ trigger: 'hover', container: 'body' })
+}
+
+function _updateSearchesSortIndicators() {
+  $('#searchesTable th.sortable .sort-caret').remove()
+  if(!_searchesSort) return
+  var icon = _searchesSort.dir === 'asc' ? 'fa-caret-up' : 'fa-caret-down'
+  $('#searchesTable th.sortable[data-sort="' + _searchesSort.field + '"]').append(' <i class="fa ' + icon + ' sort-caret"></i>')
+}
+
+var AIRBNB_PARAM_FIELDS = [
+  { key: 'checkin',                 label: 'Check-in',            type: 'date'   },
+  { key: 'checkout',                label: 'Check-out',           type: 'date'   },
+  { key: 'monthly_start_date',      label: 'Monthly Start',       type: 'date'   },
+  { key: 'monthly_length',          label: 'Monthly Length',      type: 'number', min: 1 },
+  { key: 'adults',                  label: 'Adults',              type: 'number', min: 0 },
+  { key: 'children',                label: 'Children',            type: 'number', min: 0 },
+  { key: 'infants',                 label: 'Infants',             type: 'number', min: 0 },
+  { key: 'pets',                    label: 'Pets',                type: 'number', min: 0 },
+  { key: 'price_min',               label: 'Min Price',           type: 'number', min: 0 },
+  { key: 'price_max',               label: 'Max Price',           type: 'number', min: 0 },
+  { key: 'price_filter_num_nights', label: 'Price Filter Nights', type: 'number', min: 1 },
+  { key: 'min_bedrooms',            label: 'Min Bedrooms',        type: 'number', min: 0 },
+  { key: 'min_bathrooms',           label: 'Min Bathrooms',       type: 'number', min: 0 },
+  { key: 'min_beds',                label: 'Min Beds',            type: 'number', min: 0 }
+]
+
+function renderAirbnbUrlParamFields(url) {
+  var $box = $('#editSearchUrlParams')
+  var u
+  try { u = new URL(url) } catch(e) { $box.empty(); return }
+  var p = u.searchParams
+  var html = ''
+  AIRBNB_PARAM_FIELDS.forEach(function(f) {
+    var val = p.get(f.key) || ''
+    var attrs = 'type="' + f.type + '" data-param="' + f.key + '" class="form-control airbnb-param-input" value="' + val + '"'
+    if(f.min !== undefined) attrs += ' min="' + f.min + '"'
+    html += '<div class="col-xs-6 col-sm-4" style="margin-bottom:8px">'
+    html += '<label style="font-weight:normal;font-size:12px;margin-bottom:2px">' + f.label + '</label>'
+    html += '<input ' + attrs + '>'
+    html += '</div>'
+  })
+  $box.html(html)
+}
+
+function syncAirbnbUrlFromFields() {
+  var url = $('#searchUrlBox').val()
+  var u
+  try { u = new URL(url) } catch(e) { return }
+  $('#editSearchUrlParams .airbnb-param-input').each(function() {
+    var key = $(this).data('param')
+    var val = $(this).val()
+    if(val === '' || val == null) u.searchParams.delete(key)
+    else u.searchParams.set(key, val)
+  })
+  $('#searchUrlBox').val(u.toString())
+}
+
 function searchesUnload()
 {
   $('#newSearchForm').off('submit')
   $('#editSearchForm').off('submit')
+  $('#editSearchUrlParams').off('input.airbnbParams change.airbnbParams')
+  $('#searchUrlBox').off('input.airbnbParams change.airbnbParams')
+  $(document).off('click.searchesActions')
+  $('#searchesFilterInput').off('input.searchesFilter')
+  $('#searchesTable').off('click.searchesSort')
+  if(_searchesFilterTimer) { clearTimeout(_searchesFilterTimer); _searchesFilterTimer = null }
   $('#newSearchPlatform').off('change')
   $('#newSearchUrlInput').off('input')
   $('#newSearchForm textarea[name="description"]').off('keydown').removeData('manual')
