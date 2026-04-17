@@ -396,6 +396,11 @@ function toggleRowCollapse(btn) {
   }
 }
 
+function uncollapseAllRows() {
+  localStorage.setItem('collapsedRowIds', '[]')
+  $('.grid-row-item.collapsed').removeClass('collapsed')
+}
+
 function gridAdPhotos(adId) {
   var ad = _gridAds.find(function(a){ return a._id === adId })
   var urls = (ad && ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad && ad.picture_url ? [ad.picture_url] : [])

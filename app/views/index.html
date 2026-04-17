@@ -448,6 +448,12 @@
   socket.on('connect', function(){ console.log('Socket connected:', socket.id) })
   socket.on('connect_error', function(err){ console.log('Socket connection error:', err.message) })
 
+  window.setAutoConfirmEmpty = function(enabled) {
+    window._airbnbAutoConfirmEmpty = !!enabled
+    $('#autoConfirmEmpty').prop('checked', !!enabled)
+    $('#autoConfirmEmptyChk').prop('checked', !!enabled)
+  }
+
   // Manual paste flow — when backend is soft-blocked, show inline UI in information modal
   socket.on('needManualResponse', function(data) {
     window._pendingManualRequestId = data.requestId
@@ -484,7 +490,7 @@
               '<button class="btn btn-primary btn-sm" onclick="submitManualPaste()">Submit Response</button> ' +
               '<button class="btn btn-success btn-sm" onclick="confirmEmptyPaste()">Confirm Empty</button> ' +
               '<button class="btn btn-default btn-sm" onclick="skipFoldPaste()">Retry Later</button> ' +
-              '<label style="margin-left:8px;font-weight:normal;cursor:pointer"><input type="checkbox" id="autoConfirmEmptyChk" onchange="window._airbnbAutoConfirmEmpty = this.checked"' + (window._airbnbAutoConfirmEmpty ? ' checked' : '') + '> Auto confirm empty</label> ' +
+              '<label style="margin-left:8px;font-weight:normal;cursor:pointer"><input type="checkbox" id="autoConfirmEmptyChk" onchange="setAutoConfirmEmpty(this.checked)"' + (window._airbnbAutoConfirmEmpty ? ' checked' : '') + '> Auto confirm empty</label> ' +
               '<span id="manualPasteError" style="color:#a94442;margin-left:8px;font-weight:600"></span>' +
             '</div>' +
           '</div>' +

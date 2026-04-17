@@ -190,6 +190,7 @@ function searchesfunc()
   $(document).off('click.searchesActions')
   _searchesNameFilter = ''
   _searchesSort = null
+  _searchesSelectedIds = {}
   if(_searchesFilterTimer) { clearTimeout(_searchesFilterTimer); _searchesFilterTimer = null }
   $('#searchesFilterInput').val('').off('input.searchesFilter').on('input.searchesFilter', function() {
     var val = $(this).val()
@@ -310,12 +311,20 @@ function searchesfunc()
 
     // Select-all checkbox
     $('#selectAllSearches').on('change', function(){
-      $('.searchSelectCb').prop('checked', this.checked)
+      var checked = this.checked
+      $('.searchSelectCb').prop('checked', checked).each(function(){
+        var id = $(this).data('jobid')
+        if(checked) _searchesSelectedIds[id] = true
+        else delete _searchesSelectedIds[id]
+      })
       updateViewSelectedBtn()
       updateRefreshSelectedBtn()
     })
     // Individual checkbox updates button state
     $(document).on('change', '.searchSelectCb', function(){
+      var id = $(this).data('jobid')
+      if(this.checked) _searchesSelectedIds[id] = true
+      else delete _searchesSelectedIds[id]
       var allChecked = $('.searchSelectCb').length === $('.searchSelectCb:checked').length
       $('#selectAllSearches').prop('checked', allChecked)
       updateViewSelectedBtn()
@@ -547,6 +556,7 @@ var _searchesJobs = []
 var _searchesNameFilter = ''
 var _searchesSort = null
 var _searchesFilterTimer = null
+var _searchesSelectedIds = {}
 
 function renderSearchesTable() {
   var jobs = _searchesJobs.slice()
@@ -578,6 +588,8 @@ function renderSearchesTable() {
   }
   _renderSearchesRows(jobs)
   _updateSearchesSortIndicators()
+  var cbs = $('.searchSelectCb')
+  $('#selectAllSearches').prop('checked', cbs.length > 0 && cbs.length === cbs.filter(':checked').length)
   updateViewSelectedBtn()
   updateRefreshSelectedBtn()
 }
@@ -620,9 +632,10 @@ function _renderSearchesRows(jobs) {
       stopBtnHtml = `<button type="button" class="btn btn-warning stopSearchBtn BStooltip" rel="tooltip" data-placement="top" data-mode="stop" title="stop"><i class="fa fa-stop"></i></button>`
     else if(isQueued)
       stopBtnHtml = `<button type="button" class="btn btn-default stopSearchBtn BStooltip" rel="tooltip" data-placement="top" data-mode="dequeue" title="remove from queue"><i class="fa fa-times"></i></button>`
+    let checkedAttr = _searchesSelectedIds[job.id] ? ' checked' : ''
     $tbody.append(`
       <tr>
-        <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}"></td>
+        <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}"${checkedAttr}></td>
         <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
         ${stopBtnHtml}
         <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>

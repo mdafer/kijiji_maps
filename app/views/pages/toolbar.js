@@ -31,6 +31,8 @@ var toolbarHtml = `
         <a id="viewMapBtn" class="btn btn-default btn-sm BStooltip" title="Map view" href="#map" onclick="switchToMapView(); return false"><i class="fa fa-map"></i></a>
       </div>
 
+      <button id="uncollapseAllBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Expand all rows" onclick="uncollapseAllRows()" style="display:none;margin-left:2px"><i class="fa fa-chevron-down"></i></button>
+
       <button id="favFilterBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Show favorites only" onclick="toggleFavoritesFilter()"><i class="fa fa-heart"></i></button>
       <button id="dislikeFilterBtn" type="button" class="btn btn-primary btn-sm BStooltip" title="Show disliked listings (currently hidden)" onclick="toggleHideDislikedFilter()"><i class="fa fa-thumbs-down"></i></button>
 
@@ -216,6 +218,8 @@ var toolbarHtml = `
           <button type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Clear Information" onclick="mapClearInformationWindow()"><i class="fa fa-trash-o"></i></button>
           <input type="checkbox" id="autoScroll" checked>
           <label for="autoScroll">Auto Scroll</label>
+          <input type="checkbox" id="autoConfirmEmpty" style="margin-left:10px" onchange="setAutoConfirmEmpty(this.checked)">
+          <label for="autoConfirmEmpty">Auto confirm empty</label>
         </div>
         <div class="pull-right">
           <button type="button" class="btn btn-primary" data-dismiss="modal">Ok</button>
@@ -368,6 +372,7 @@ function switchToGridMode(mode) {
   saveGridMode()
   $('#gridModeCards').toggleClass('btn-primary', mode === 'cards').toggleClass('btn-default', mode !== 'cards')
   $('#gridModeRows').toggleClass('btn-primary', mode === 'rows').toggleClass('btn-default', mode !== 'rows')
+  $('#uncollapseAllBtn').toggle(mode === 'rows')
   var state = window.currentState
   if(state === 'favorites') {
     switchFavView('grid')
@@ -432,6 +437,8 @@ function setViewMode(mode) {
     if(_gridMode === 'rows') $('#gridModeRows').removeClass('btn-default').addClass('btn-primary')
     else $('#gridModeCards').removeClass('btn-default').addClass('btn-primary')
   }
+  var isRows = mode === 'rows' || (mode === 'grid' && _gridMode === 'rows')
+  $('#uncollapseAllBtn').toggle(isRows)
 
   if(hasActiveShapeFilter()) {
     $('#drawAreaBtn').addClass('btn-primary').removeClass('btn-default')
