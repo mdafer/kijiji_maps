@@ -64,8 +64,10 @@ function buildPopupHtml(ad) {
   }
 
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
+  var disColor = isDisliked(ad._id) ? '#34495e' : '#ccc'
   html += '<div style="margin:4px 0;display:flex;gap:6px;align-items:center">'
   html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   html += '<a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+visitUrl+'" target="_blank">'+visitLabel+'</a>'
   html += '</div>'
   html += '<button class="btn btn-xs btn-default" style="margin:2px 0;width:100%" onclick="viewInList(\''+ad._id+'\')"><i class="fa fa-list"></i> View in list</button>'

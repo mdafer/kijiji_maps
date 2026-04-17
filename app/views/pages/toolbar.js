@@ -32,6 +32,7 @@ var toolbarHtml = `
       </div>
 
       <button id="favFilterBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Show favorites only" onclick="toggleFavoritesFilter()"><i class="fa fa-heart"></i></button>
+      <button id="dislikeFilterBtn" type="button" class="btn btn-primary btn-sm BStooltip" title="Show disliked listings (currently hidden)" onclick="toggleHideDislikedFilter()"><i class="fa fa-thumbs-down"></i></button>
 
       <button id="filtersBtn" type="button" class="btn btn-primary btn-sm BStooltip" title="Filters & Settings" data-toggle="modal" data-target="#filtersModal"><i class="fa fa-sliders"></i></button>
       <button id="clearFiltersBtn" type="button" class="btn btn-warning btn-sm BStooltip" title="Clear all filters" onclick="clearAllFilters()" style="display:none"><i class="fa fa-times"></i> Clear Filters</button>
@@ -337,6 +338,7 @@ function _handleNewAd(data) {
   if(!data || !data.ad || !_isJobInCurrentView(data.jobId)) return
   var ad = data.ad
   if(ad.lat == null || ad.lon == null) return
+  if(_hideDisliked && typeof isDisliked === 'function' && isDisliked(ad._id)) return
   if(typeof _markers !== 'undefined' && _markers.some(function(m){ return m.url === ad.url })) return
   if(typeof setMarkersByAds === 'function' && typeof map !== 'undefined' && map) {
     setMarkersByAds(map, [ad], false)
@@ -403,6 +405,22 @@ function toggleFavoritesFilter() {
     loadGridAds($('#filtersForm').serialize())
 }
 
+function toggleHideDislikedFilter() {
+  _hideDisliked = !_hideDisliked
+  saveHideDisliked()
+  $('#dislikeFilterBtn')
+    .toggleClass('btn-primary', _hideDisliked)
+    .toggleClass('btn-default', !_hideDisliked)
+    .attr('title', _hideDisliked ? 'Show disliked listings (currently hidden)' : 'Hide disliked listings (currently shown)')
+  var state = window.currentState
+  if(state === 'map' && typeof getAdsAsync === 'function')
+    getAdsAsync($('#filtersForm').serialize(), true)
+  else if(state === 'grid' && typeof loadGridAds === 'function')
+    loadGridAds($('#filtersForm').serialize())
+  else if(state === 'favorites' && typeof loadFavAds === 'function')
+    loadFavAds()
+}
+
 function setViewMode(mode) {
   // Highlight active view button
   $('#gridModeCards, #gridModeRows, #viewMapBtn').removeClass('btn-primary').addClass('btn-default')
@@ -422,6 +440,11 @@ function setViewMode(mode) {
 
   // Sync favorites filter button state
   $('#favFilterBtn').toggleClass('btn-primary', _favoritesOnly).toggleClass('btn-default', !_favoritesOnly)
+  // Sync dislike-hide filter button state
+  $('#dislikeFilterBtn')
+    .toggleClass('btn-primary', _hideDisliked)
+    .toggleClass('btn-default', !_hideDisliked)
+    .attr('title', _hideDisliked ? 'Show disliked listings (currently hidden)' : 'Hide disliked listings (currently shown)')
 
   updateFilterIndicator()
 }

@@ -35,6 +35,13 @@ module.exports = {
 					if(ids.length) query.$and.push({$or: ids.map(id => ({['jobs.'+id]: {$exists: true}}))})
 				}
 			}
+			if(params.hideDisliked === 'true') {
+				const user = await params.db.get('users').findOne({_id: authUser._id})
+				if(user && user.dislikes && user.dislikes.length) {
+					if(!query.$and) query.$and = []
+					query.$and.push({_id: {$nin: user.dislikes.map(id => params.db.id(id))}})
+				}
+			}
 			const docs = await params.db.get('ads').find(query)
 			return callback({status: ApiStatus.SUCCESS, meta: docs})
 		} catch(err) {

@@ -61,6 +61,8 @@ function renderpage(params={})
 		$('#profileForm [name="lastName"]').val(myUser.lastName)
 		$('#profileForm [name="email"]').val(myUser.email)
 		loadFavoriteIds()
+		loadDislikeIds()
+		restoreHideDisliked()
 	}
 
 	let splitter = location.href.lastIndexOf('#')

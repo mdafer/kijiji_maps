@@ -1,9 +1,9 @@
-function APIaddFavorite(adId, callback) {
+function APIaddDislike(adId, callback) {
     $.ajax({
         type: "POST",
         dataType: "json",
         contentType: "application/json",
-        url: apiURL+'favorite',
+        url: apiURL+'dislike',
         data: JSON.stringify({adId: adId}),
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
         success: function(data){ if(callback) callback(data.meta) },
@@ -11,12 +11,12 @@ function APIaddFavorite(adId, callback) {
     })
 }
 
-function APIremoveFavorite(adId, callback) {
+function APIremoveDislike(adId, callback) {
     $.ajax({
         type: "POST",
         dataType: "json",
         contentType: "application/json",
-        url: apiURL+'unfavorite',
+        url: apiURL+'undislike',
         data: JSON.stringify({adId: adId}),
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
         success: function(data){ if(callback) callback(data.meta) },
@@ -24,15 +24,11 @@ function APIremoveFavorite(adId, callback) {
     })
 }
 
-function APIgetFavorites(params, callback) {
-    if(typeof _hideDisliked !== 'undefined' && _hideDisliked) {
-        params = Object.assign({}, params || {}, {hideDisliked: 'true'})
-    }
+function APIgetDislikes(callback) {
     $.ajax({
         type: "GET",
         dataType: "json",
-        url: apiURL+'favorites',
-        data: params,
+        url: apiURL+'dislikes',
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
         success: function(data){ if(callback) callback(data.meta) },
         error: function(err){ console.log(err.responseJSON) }

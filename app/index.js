@@ -111,6 +111,22 @@ app.get('/favorites', function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.favorites.getFavorites);
 });
 
+app.post('/dislike', [
+		check('adId').exists().trim().escape()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.dislikes.addDislike);
+});
+
+app.post('/undislike', [
+		check('adId').exists().trim().escape()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.dislikes.removeDislike);
+});
+
+app.get('/dislikes', function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.dislikes.getDislikes);
+});
+
 app.post('/user', [
   		check('firstName').trim().escape().isLength({ min: 2 }),
   		check('lastName').trim().escape().isLength({ min: 2 }),

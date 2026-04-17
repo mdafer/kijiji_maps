@@ -15,6 +15,7 @@ var _favAds = [] // raw ads from last fetch, before shape filter
 
 function favoritesfunc() {
   _favoritesOnly = true
+  restoreHideDisliked()
   _favViewMode = 'grid'
   setViewMode('grid')
   $('#pageTitle').text('Favorites')

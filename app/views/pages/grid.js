@@ -39,6 +39,7 @@ function gridfunc() {
   // Restore persisted state
   restoreShapeGeo()
   restoreFavoritesOnly()
+  restoreHideDisliked()
 
   // Load displayAmenities from user account settings
   APIgetProfile(null, function(user){
@@ -141,6 +142,7 @@ function appendGridAd(ad) {
   }
   if(hasActiveShapeFilter() && !isInsideShapeFilter(ad.lat, ad.lon)) return
   if(_favoritesOnly && !isFavorite(ad._id)) return
+  if(_hideDisliked && isDisliked(ad._id)) return
 
   _gridAds.push(ad)
   if(ad.amenities && ad.amenities.length)
@@ -258,8 +260,10 @@ function buildCardHtml(ad) {
   html += '    <div class="grid-card-details">'+details.join(' &middot; ')+'</div>'
   html += amenityHtml
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
+  var disColor = isDisliked(ad._id) ? '#34495e' : '#ccc'
   html += '    <div class="grid-card-actions">'
   html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   html += '      '+photoBtnHtml
   if(ad.platform === 'airbnb') {
     if(ad.availability) html += '      <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i> Availability</button>'
@@ -344,8 +348,10 @@ function buildRowHtml(ad) {
   html += '    <span class="grid-row-price">$'+ad.price+'</span>'
   html += '    <span class="grid-row-details">'+details.join(' &middot; ')+'</span>'
   var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
+  var disColor = isDisliked(ad._id) ? '#34495e' : '#ccc'
   html += '    '+amenityHtml
   html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike" style="margin-left:4px"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   var totalPics = (ad.picture_urls && ad.picture_urls.length) || (ad.picture_url ? 1 : 0)
   if(totalPics > 0) html += '    <button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))" title="Photo slideshow" style="margin-left:4px"><i class="fa fa-camera"></i> '+totalPics+'</button>'
   if(ad.platform === 'airbnb') {

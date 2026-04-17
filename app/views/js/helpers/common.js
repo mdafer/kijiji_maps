@@ -10,6 +10,8 @@ var visitedUrls
 var mapJobId
 var _favoriteIds = new Set()
 var _favoritesOnly = false
+var _dislikeIds = new Set()
+var _hideDisliked = true
 var _focusAdId = null
 
 // --- Lazy image loading with preload offset ---
@@ -184,6 +186,54 @@ function toggleFavoriteBtn(el) {
 	})
 }
 
+// --- Dislikes helpers ---
+function loadDislikeIds() {
+	APIgetDislikes(function(ids){
+		_dislikeIds = new Set(ids || [])
+	})
+}
+
+function isDisliked(adId) {
+	return _dislikeIds.has(adId)
+}
+
+function toggleDislike(adId, callback) {
+	if(isDisliked(adId)) {
+		_dislikeIds.delete(adId)
+		APIremoveDislike(adId, function(){ if(callback) callback(false) })
+	} else {
+		_dislikeIds.add(adId)
+		APIaddDislike(adId, function(){ if(callback) callback(true) })
+	}
+}
+
+function toggleDislikeBtn(el) {
+	var $el = $(el)
+	var adId = $el.data('adid')
+	toggleDislike(adId, function(isDis) {
+		$el.find('i').css('color', isDis ? '#34495e' : '#ccc')
+		// When the filter is active, clicking dislike on a visible listing removes it.
+		if(_hideDisliked && isDis) {
+			if(typeof _markers !== 'undefined' && _markers.length) {
+				var m = _markers.find(function(mk){ return mk.adData && mk.adData._id === adId })
+				if(m) {
+					m.setMap(null)
+					if(typeof infowindow !== 'undefined' && infowindow) infowindow.close()
+				}
+			}
+			var $row = $('.grid-card[data-adid="'+adId+'"], .grid-row-item[data-adid="'+adId+'"]')
+			$row.remove()
+			if(typeof _gridAds !== 'undefined') {
+				var idx = _gridAds.findIndex(function(a){ return a._id === adId })
+				if(idx !== -1) {
+					_gridAds.splice(idx, 1)
+					if(typeof _gridRenderedCount !== 'undefined' && _gridRenderedCount > idx) _gridRenderedCount--
+				}
+			}
+		}
+	})
+}
+
 function logout()
 {
 	try{
@@ -211,6 +261,8 @@ function clearGlobalVars()
 	mapJobId = null
 	_favoriteIds = new Set()
 	_favoritesOnly = false
+	_dislikeIds = new Set()
+	_hideDisliked = true
 	_focusAdId = null
 	_favJobIds = []
 	_shapeFilterGeo = null
@@ -459,12 +511,23 @@ function restoreFavoritesOnly() {
 	_favoritesOnly = !!localStorage.getItem('savedFavoritesOnly')
 }
 
+function saveHideDisliked() {
+	localStorage.setItem('savedHideDisliked', _hideDisliked ? '1' : '0')
+}
+
+function restoreHideDisliked() {
+	var raw = localStorage.getItem('savedHideDisliked')
+	if(raw === null) _hideDisliked = true
+	else _hideDisliked = raw === '1'
+}
+
 function clearSavedSettings() {
 	localStorage.removeItem('savedFilters')
 	localStorage.removeItem('savedShapeGeo')
 	localStorage.removeItem('savedGridMode')
 	localStorage.removeItem('savedSort')
 	localStorage.removeItem('savedFavoritesOnly')
+	localStorage.removeItem('savedHideDisliked')
 }
 
 function hasActiveFilters() {
@@ -499,6 +562,9 @@ function clearAllFilters() {
 	if(typeof clearDrawnShape === 'function') clearDrawnShape(true)
 	_favoritesOnly = false
 	$('#favFilterBtn').removeClass('btn-primary').addClass('btn-default')
+	_hideDisliked = true
+	saveHideDisliked()
+	$('#dislikeFilterBtn').removeClass('btn-default').addClass('btn-primary')
 	localStorage.removeItem('savedFilters')
 	localStorage.removeItem('savedShapeGeo')
 	localStorage.removeItem('savedFavoritesOnly')

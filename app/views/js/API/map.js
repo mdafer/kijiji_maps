@@ -20,6 +20,13 @@ async function APIgetAds(params, callback=null)
 		else if(typeof params === 'object')
 			params = Object.assign({}, params, extra)
 	}
+	// Inject hide-disliked filter if active (default: on)
+	if(typeof _hideDisliked !== 'undefined' && _hideDisliked) {
+		if(typeof params === 'string')
+			params += '&hideDisliked=true'
+		else if(typeof params === 'object')
+			params = Object.assign({}, params, {hideDisliked: 'true'})
+	}
 	$.ajax({
 	    type: "GET",
 	    dataType: "json",

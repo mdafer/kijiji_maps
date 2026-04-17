@@ -55,6 +55,7 @@ function mapfunc()
   // Restore persisted shape geometry
   restoreShapeGeo()
   restoreFavoritesOnly()
+  restoreHideDisliked()
 
   // Load displayAmenities from user account settings
   APIgetProfile(null, function(user){
