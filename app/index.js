@@ -204,6 +204,12 @@ app.post('/stopJob', [
 	Helpers.router.finish(req, res, Controllers.jobs.stopJob);
 });
 
+app.post('/queueJobs', [
+		check('jobIds').exists(),
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.jobs.queueJobs);
+});
+
 /*app.post('/rebuildJob', [
   		check('jobId').exists(),
 	], function(req, res, next) {
@@ -233,3 +239,4 @@ Helpers.logger.log('Magic happens on port '+process.env.LISTENER_PORT);
 http.listen(process.env.LISTENER_PORT);
 
 Controllers.jobs.processPendingJobs({db},{},()=>{})
+Controllers.jobs.resumeQueues({db})

@@ -4,7 +4,56 @@ parallel = require('async/parallel'),
 pick = require('lodash.pick'),
 uuid = require('uuid-random')
 
+function jobPlatform(job) { return job.platform || 'kijiji' }
+
+// Picks the oldest-queued job for a (user, platform) and runs it, but only if
+// no other job is currently running for that same platform. Chains to itself
+// after the job completes so queued searches on the same platform process one
+// after another. Different platforms run in parallel.
+async function processUserQueue(db, userId, platform) {
+	try {
+		const user = await db.get('users').findOne({_id: userId})
+		if(!user || !user.jobs || !user.jobs.length) return
+		const platJobs = user.jobs.filter(j => jobPlatform(j) === platform)
+		if(platJobs.some(j => j.statusCode === 2)) return
+		const queued = platJobs.filter(j => j.queuedAt).sort((a, b) => new Date(a.queuedAt) - new Date(b.queuedAt))
+		if(!queued.length) return
+		const job = queued[0]
+		await db.get('users').update(
+			{_id: userId, jobs: {$elemMatch: {id: job.id, queuedAt: {$exists: true}}}},
+			{"$set": {"jobs.$.statusCode": 2, "jobs.$.lastUpdated": new Date()}, "$unset": {"jobs.$.queuedAt": ""}}
+		)
+		const myparams = {
+			db,
+			jobId: job.id,
+			jobUrl: job.url,
+			pageUrl: job.url,
+			pageNumber: 0,
+			jobName: job.name,
+			userId
+		}
+		if(job.fetchDetails !== undefined) myparams.fetchDetails = job.fetchDetails
+		if(job.fetchAvailability !== undefined) myparams.fetchAvailability = job.fetchAvailability
+		if(job.gridDepth) myparams.gridDepth = job.gridDepth
+		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
+		;(async () => {
+			let processedPages = 0
+			try {
+				processedPages = await scraper.processPage(myparams)
+			} catch(err) {
+				Helpers.logger.log({print: err, channels: job.id+'jobWarning'})
+			}
+			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages: processedPages}, channels: userId+'command'})
+			Helpers.logger.log({ command:'doneProcAndValid', print: processedPages, channels: job.id+'command'})
+			processUserQueue(db, userId, platform)
+		})()
+	} catch(err) {
+		Helpers.logger.log(err)
+	}
+}
+
 module.exports = {
+	processUserQueue,
 	newJob: async function(params, authUser, callback){
 		const platform = params.platform || 'kijiji'
 		const job = {id:uuid(), statusCode:2, name:params.name, url: params.url, description: params.description, platform, lastUpdated: new Date()}
@@ -29,6 +78,7 @@ module.exports = {
 		Helpers.logger.log({ command:'doneProcAndValid', print: pagesProcessed, channels:job.id+'command'})
 		params.db.get('users').update({"jobs.id":job.id},{"$set": {"jobs.$.statusCode":1, "jobs.$.lastUpdated": new Date()}})
 			.catch((err) => {Helpers.logger.log({print:err, channels:job.id+'jobWarning'})})
+		processUserQueue(params.db, authUser._id, platform)
 	},
 	updateJob: async function(params, authUser, callback){
 		try{
@@ -69,16 +119,62 @@ module.exports = {
 			const job = user.jobs.find(job => { return job.id == params.jobId})
 			if(!job)
 				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job not found"}})
+			// Dequeue a queued job without touching its statusCode
+			if(job.queuedAt && job.statusCode !== 2) {
+				await params.db.get('users').update({"jobs.id":params.jobId},{"$unset": {"jobs.$.queuedAt": ""}})
+				Helpers.logger.log({print:`Job ${params.jobId} dequeued`, channels:params.jobId+'jobUpdate'})
+				Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, dequeued:true}, channels:authUser._id+'command'})
+				return callback({status: Helpers.ApiStatus.SUCCESS, meta: {status:'Dequeued', jobId: params.jobId}})
+			}
 			if(job.statusCode !== 2)
 				return callback({ status: Helpers.ApiStatus.NO_CHANGES_MADE, meta: {message:"Job is not running", jobId: params.jobId}})
 			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": {"jobs.$.statusCode":0, "jobs.$.lastUpdated": new Date()}})
 			Helpers.logger.log({print:`Job ${params.jobId} stop requested`, channels:params.jobId+'jobUpdate'})
 			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, stopped:true}, channels:authUser._id+'command'})
 			Helpers.logger.log({ command:'doneProcAndValid', print: 0, channels:params.jobId+'command'})
+			processUserQueue(params.db, authUser._id, jobPlatform(job))
 			return callback({status: Helpers.ApiStatus.SUCCESS, meta: {status:'Stopped', jobId: params.jobId}})
 		}
 		catch(err) {
 			Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})
+		}
+	},
+	queueJobs: async function(params, authUser, callback){
+		try{
+			let jobIds = params.jobIds
+			if(typeof jobIds === 'string') {
+				try { jobIds = JSON.parse(jobIds) } catch(e) { jobIds = [jobIds] }
+			}
+			if(!Array.isArray(jobIds)) jobIds = [jobIds].filter(Boolean)
+			if(!jobIds.length)
+				return callback({ status: Helpers.ApiStatus.VALIDATION_ERRORS || Helpers.ApiStatus.DB_ERROR, meta: {message:"No jobIds provided"}})
+			const user = await params.db.get('users').findOne({_id: authUser._id})
+			if(!user)
+				return callback({ status: Helpers.ApiStatus.USER_NO_LONGER_EXISTS, meta: null })
+			const queued = []
+			const skipped = []
+			const now = new Date()
+			for(const jobId of jobIds) {
+				const job = (user.jobs || []).find(j => j.id == jobId)
+				if(!job) { skipped.push({jobId, reason: 'not found'}); continue }
+				if(job.statusCode === 2) { skipped.push({jobId, reason: 'running'}); continue }
+				if(job.queuedAt) { skipped.push({jobId, reason: 'already queued'}); continue }
+				await params.db.get('users').update(
+					{_id: authUser._id, "jobs.id": jobId},
+					{"$set": {"jobs.$.queuedAt": now}}
+				)
+				queued.push(jobId)
+			}
+			callback({status: Helpers.ApiStatus.SUCCESS, meta: {queued, skipped}})
+			const platforms = new Set()
+			for(const id of queued) {
+				const j = user.jobs.find(j => j.id == id)
+				if(j) platforms.add(jobPlatform(j))
+			}
+			platforms.forEach(p => processUserQueue(params.db, authUser._id, p))
+		}
+		catch(err) {
+			Helpers.logger.log(err); return callback({ status: ApiStatus.DB_ERROR, meta: err})
 		}
 	},
 	resetJob: async function(params, authUser, callback){
@@ -95,7 +191,7 @@ module.exports = {
 			if(params.fetchDetails !== undefined) updateSet["jobs.$.fetchDetails"] = params.fetchDetails
 			if(params.fetchAvailability !== undefined) updateSet["jobs.$.fetchAvailability"] = params.fetchAvailability
 			if(params.gridDepth) updateSet["jobs.$.gridDepth"] = params.gridDepth
-			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": updateSet})
+			await params.db.get('users').update({"jobs.id":params.jobId},{"$set": updateSet, "$unset": {"jobs.$.queuedAt": ""}})
 			params.jobUrl = job.url
 			params.jobId = job.id
 			params.pageNumber = 0
@@ -110,6 +206,7 @@ module.exports = {
 			await scraper.processPage(params)
 			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, pages:params.pageNumber}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: params.pageNumber, channels:params.jobId+'command'})
+			processUserQueue(params.db, authUser._id, jobPlatform(job))
 		} catch(err) { Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'}) }
 	},
 	clearJobAds: async function(params, authUser, callback){
@@ -155,8 +252,20 @@ module.exports = {
 				const processedPages = await scraper.processPage(myparams)
 				Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:processedPages}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: processedPages, channels:job.id+'command'})
+				processUserQueue(params.db, job._id, jobPlatform(job))
 			})
 		}).catch((err) => {Helpers.logger.log(err)})
+	},
+	resumeQueues: async function(params){
+		try {
+			const users = await params.db.get('users').find({"jobs.queuedAt": {$exists: true}})
+			if(!users || !users.length) return
+			Helpers.logger.log(users.length+" user(s) with queued jobs — resuming queues.")
+			users.forEach(u => {
+				const platforms = new Set((u.jobs || []).filter(j => j.queuedAt).map(jobPlatform))
+				platforms.forEach(p => processUserQueue(params.db, u._id, p))
+			})
+		} catch(err) { Helpers.logger.log(err) }
 	},
 	/*rebuildJob: function(params, authUser, callback){
 		params.db.get('users').findOneAndUpdate({"jobs.id":params.jobId},{"$set": {"jobs.$.statusCode":2}}, {returnOriginal:true}).then((user) => {

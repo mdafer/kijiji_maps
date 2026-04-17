@@ -8,6 +8,7 @@ var searchespage= `<!-- Content Header (Page header) -->
         <small></small>
       </h1>
       <button id="viewSelectedBtn" type="button" class="btn btn-info" onclick="viewSelectedSearches()" disabled><i class="fa fa-eye"></i> View Selected</button>
+      <button id="refreshSelectedBtn" type="button" class="btn btn-warning" onclick="refreshSelectedSearches()" disabled><i class="fa fa-refresh"></i> Refresh Selected</button>
       <button type="button" class="btn btn-success" data-toggle="modal" data-target="#newSearchModal">New Search</button>
     </section>
 
@@ -254,15 +255,21 @@ function searchesfunc()
       event.preventDefault();
       var stopId = $(this).data('id')
       var stopName = $(this).data('name') || 'this search'
+      var mode = $(this).attr('data-mode') || 'stop'
+      var title = mode === 'dequeue' ? 'Remove from Queue' : 'Stop Search'
+      var message = mode === 'dequeue'
+        ? 'Remove "' + stopName + '" from the refresh queue?'
+        : 'Stop running search "' + stopName + '"? You can re-run it later with Run Now.'
+      var confirmLabel = mode === 'dequeue' ? 'Remove' : 'Stop'
       showConfirmModal(
-        'Stop Search',
-        'Stop running search "' + stopName + '"? You can re-run it later with Run Now.',
+        title,
+        message,
         function() {
           APIstopJob(JSON.stringify({jobId: stopId}), ()=>{
             setTimeout(()=>{renderpage('searches')},300)
           })
         },
-        { confirmLabel: 'Stop', confirmClass: 'btn-warning' }
+        { confirmLabel: confirmLabel, confirmClass: 'btn-warning' }
       )
     })
 
@@ -305,12 +312,14 @@ function searchesfunc()
     $('#selectAllSearches').on('change', function(){
       $('.searchSelectCb').prop('checked', this.checked)
       updateViewSelectedBtn()
+      updateRefreshSelectedBtn()
     })
     // Individual checkbox updates button state
     $(document).on('change', '.searchSelectCb', function(){
       var allChecked = $('.searchSelectCb').length === $('.searchSelectCb:checked').length
       $('#selectAllSearches').prop('checked', allChecked)
       updateViewSelectedBtn()
+      updateRefreshSelectedBtn()
     })
   })
 
@@ -415,6 +424,41 @@ function viewSelectedSearches() {
   var label = selected.length + ' Searches'
   window.location.hash = 'grid?jobId=multi&jobName=' + encodeURIComponent(label)
   renderpage()
+}
+
+function refreshSelectedSearches() {
+  var selected = []
+  var skipped = 0
+  $('.searchSelectCb:checked').each(function(){
+    var id = $(this).data('jobid')
+    var job = _searchesJobs.find(function(j){ return String(j.id) === String(id) })
+    if(job && (job.statusCode === 2 || job.queuedAt)) { skipped++; return }
+    selected.push(id)
+  })
+  if(!selected.length) {
+    if(skipped) showAlertModal('Nothing to queue', 'All selected searches are already running or queued.')
+    return
+  }
+  var msg = 'Queue ' + selected.length + ' search' + (selected.length > 1 ? 'es' : '') + ' for refresh? They will run one after the other on the server — even if you close your browser.'
+  if(skipped) msg += '<br><small class="text-muted">(' + skipped + ' already running/queued will be skipped.)</small>'
+  showConfirmModal(
+    'Refresh Selected',
+    msg,
+    function() {
+      APIqueueJobs(JSON.stringify({ jobIds: selected }), function(){
+        setTimeout(function(){ renderpage('searches') }, 300)
+      })
+    },
+    { confirmLabel: 'Queue', confirmClass: 'btn-success' }
+  )
+}
+
+function updateRefreshSelectedBtn() {
+  var $btn = $('#refreshSelectedBtn')
+  if(!$btn.length) return
+  var count = $('.searchSelectCb:checked').length
+  $btn.prop('disabled', count === 0)
+  $btn.html('<i class="fa fa-refresh"></i> Refresh Selected' + (count > 0 ? ' (' + count + ')' : ''))
 }
 
 function parseAirbnbUrl(url) {
@@ -535,6 +579,7 @@ function renderSearchesTable() {
   _renderSearchesRows(jobs)
   _updateSearchesSortIndicators()
   updateViewSelectedBtn()
+  updateRefreshSelectedBtn()
 }
 
 function _renderSearchesRows(jobs) {
@@ -547,11 +592,15 @@ function _renderSearchesRows(jobs) {
   for(let i = 0; i < jobs.length; i++) {
     let job = jobs[i]
     let statusDom
-    switch(job.statusCode) {
-      case 0: statusDom = '<td><span class="label label-danger">Failed</span></td>'; break
-      case 1: statusDom = '<td><span class="label label-success">Completed</span></td>'; break
-      case 2: statusDom = '<td><span class="label label-warning">Pending</span></td>'; break
-      default: statusDom = '<td></td>'
+    if(job.queuedAt && job.statusCode !== 2) {
+      statusDom = '<td><span class="label label-primary">Queued</span></td>'
+    } else {
+      switch(job.statusCode) {
+        case 0: statusDom = '<td><span class="label label-danger">Failed</span></td>'; break
+        case 1: statusDom = '<td><span class="label label-success">Completed</span></td>'; break
+        case 2: statusDom = '<td><span class="label label-warning">Pending</span></td>'; break
+        default: statusDom = '<td></td>'
+      }
     }
     let platform = job.platform || (job.url && job.url.includes('airbnb') ? 'airbnb' : job.url && job.url.includes('facebook.com') ? 'facebook' : 'kijiji')
     let platformLabel = platform === 'airbnb'
@@ -565,11 +614,17 @@ function _renderSearchesRows(jobs) {
       let airbnbDetails = formatAirbnbDetails(job.url)
       if(airbnbDetails) descriptionHtml = airbnbDetails + (job.description ? '<br><small class="text-muted">' + job.description + '</small>' : '')
     }
+    let isQueued = !!(job.queuedAt && job.statusCode !== 2)
+    let stopBtnHtml = ''
+    if(job.statusCode === 2)
+      stopBtnHtml = `<button type="button" class="btn btn-warning stopSearchBtn BStooltip" rel="tooltip" data-placement="top" data-mode="stop" title="stop"><i class="fa fa-stop"></i></button>`
+    else if(isQueued)
+      stopBtnHtml = `<button type="button" class="btn btn-default stopSearchBtn BStooltip" rel="tooltip" data-placement="top" data-mode="dequeue" title="remove from queue"><i class="fa fa-times"></i></button>`
     $tbody.append(`
       <tr>
         <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}"></td>
         <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
-        ${job.statusCode === 2 ? `<button type="button" class="btn btn-warning stopSearchBtn BStooltip" rel="tooltip" data-placement="top" title="stop"><i class="fa fa-stop"></i></button>` : ''}
+        ${stopBtnHtml}
         <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
         </td>
         ${platformLabel}
@@ -582,7 +637,7 @@ function _renderSearchesRows(jobs) {
     `)
     $('#searchesTBody .editSearchBtn').last().data('id', job.id).data('name', $.parseHTML(job.name || ' ')[0].data).data('url', job.url).data('description', $.parseHTML(job.description || ' ')[0].data).data('platform', platform).data('gridDepth', job.gridDepth || 1)
     $('#searchesTBody .delSearchBtn').last().data('id', job.id)
-    if(job.statusCode === 2)
+    if(stopBtnHtml)
       $('#searchesTBody .stopSearchBtn').last().data('id', job.id).data('name', job.name)
   }
   $('.BStooltip').tooltip({ trigger: 'hover', container: 'body' })
