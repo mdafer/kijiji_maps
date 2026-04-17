@@ -9,6 +9,11 @@ var searchespage= `<!-- Content Header (Page header) -->
       </h1>
       <button id="viewSelectedBtn" type="button" class="btn btn-info" onclick="viewSelectedSearches()" disabled><i class="fa fa-eye"></i> View Selected</button>
       <button id="refreshSelectedBtn" type="button" class="btn btn-warning" onclick="refreshSelectedSearches()" disabled><i class="fa fa-refresh"></i> Refresh Selected</button>
+      <div class="btn-group">
+        <button id="moveToGroupBtn" type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" disabled><i class="fa fa-folder"></i> Move to Group <span class="caret"></span></button>
+        <ul id="moveToGroupMenu" class="dropdown-menu"></ul>
+      </div>
+      <button type="button" class="btn btn-default" onclick="createNewSearchGroup()"><i class="fa fa-folder-open"></i> New Group</button>
       <button type="button" class="btn btn-success" data-toggle="modal" data-target="#newSearchModal">New Search</button>
     </section>
 
@@ -154,6 +159,10 @@ var searchespage= `<!-- Content Header (Page header) -->
               <label>Search Description</label>
               <textarea id ="searchDescriptionBox" name="description" class="form-control" rows="3" placeholder="Description"></textarea>
             </div>
+            <div class="form-group">
+              <label>Group</label>
+              <select id="searchGroupBox" name="groupId" class="form-control"></select>
+            </div>
             <div id="editSearchAirbnbExtras" style="display:none">
               <div class="form-group">
                 <label>URL Parameters</label>
@@ -235,7 +244,9 @@ function searchesfunc()
   }).trigger('change')
   $('#newSearchAirbnbExtras .BStooltip').tooltip({ trigger: 'hover', container: 'body' })
 
+  _loadCollapsedSearchGroups()
   APIgetProfile(null, function(user){
+    _searchGroups = (user && Array.isArray(user.searchGroups)) ? user.searchGroups : []
     if(!user.jobs || !user.jobs.length)
     {
       $('#searchesTBody').append(`
@@ -245,6 +256,7 @@ function searchesfunc()
         </td>
         </tr>
       `)
+      updateMoveToGroupBtn()
       return
     }
     jobs = user.jobs
@@ -294,11 +306,16 @@ function searchesfunc()
       event.preventDefault();
       var jobIdForEdit = $(this).data('id')
       var jobPlatform = $(this).data('platform')
+      var currentGroupId = $(this).data('groupId') || ''
       $('#editSearchForm').data('jobId', jobIdForEdit).data('platform', jobPlatform)
       $('#searchId').val(jobIdForEdit)
       $('#searchNameBox').val($(this).data('name'))
       $('#searchUrlBox').val($(this).data('url'))
       $('#searchDescriptionBox').val($(this).data('description'))
+      var groupOptions = '<option value="">Ungrouped</option>' + _searchGroups.map(function(g){
+        return '<option value="' + _escapeHtml(g.id) + '"' + (String(g.id) === String(currentGroupId) ? ' selected' : '') + '>' + _escapeHtml(g.name) + '</option>'
+      }).join('')
+      $('#searchGroupBox').html(groupOptions)
       if(jobPlatform === 'airbnb') {
         $('#searchGridDepthBox').val($(this).data('gridDepth'))
         renderAirbnbUrlParamFields($(this).data('url'))
@@ -317,18 +334,46 @@ function searchesfunc()
         if(checked) _searchesSelectedIds[id] = true
         else delete _searchesSelectedIds[id]
       })
+      _syncGroupHeaderCheckboxes()
       updateViewSelectedBtn()
       updateRefreshSelectedBtn()
+      updateMoveToGroupBtn()
     })
     // Individual checkbox updates button state
     $(document).on('change', '.searchSelectCb', function(){
       var id = $(this).data('jobid')
       if(this.checked) _searchesSelectedIds[id] = true
       else delete _searchesSelectedIds[id]
-      var allChecked = $('.searchSelectCb').length === $('.searchSelectCb:checked').length
-      $('#selectAllSearches').prop('checked', allChecked)
+      _syncGroupHeaderCheckboxes()
+      _syncSelectAllCheckbox()
       updateViewSelectedBtn()
       updateRefreshSelectedBtn()
+      updateMoveToGroupBtn()
+    })
+    $(document).on('change', '.searchGroupHeaderCb', function(){
+      toggleSearchGroupSelect($(this).data('groupid'), this.checked)
+    })
+    $(document).on('click.searchesActions', '.searchGroupTitle', function(e){
+      var gid = $(this).data('groupid')
+      if(!gid || gid === UNGROUPED_ID) return
+      e.preventDefault()
+      renameSearchGroup(gid)
+    })
+    $(document).on('keydown.searchesActions', '.searchGroupTitleInput', function(e){
+      if(e.key === 'Enter') {
+        e.preventDefault()
+        $(this).data('committed', true)
+        _commitRenameSearchGroup($(this).data('groupid'), this.value)
+      } else if(e.key === 'Escape') {
+        e.preventDefault()
+        $(this).data('committed', true)
+        _cancelRenameSearchGroup()
+      }
+    })
+    $(document).on('blur.searchesActions', '.searchGroupTitleInput', function(){
+      if($(this).data('committed')) return
+      $(this).data('committed', true)
+      _commitRenameSearchGroup($(this).data('groupid'), this.value)
     })
   })
 
@@ -388,6 +433,7 @@ function searchesfunc()
     const platform = $(this).data('platform')
     if(platform === 'airbnb') formData.gridDepth = Number(formData.gridDepth) || 1
     else delete formData.gridDepth
+    if(!('groupId' in formData)) formData.groupId = ''
     APIupdateJob(formData, ()=>{
       $('#editSearchModal').modal('hide')
       if(runNow) {
@@ -553,10 +599,171 @@ function formatAirbnbDetails(url) {
 }
 
 var _searchesJobs = []
+var _searchGroups = []
+var _collapsedSearchGroups = {}
 var _searchesNameFilter = ''
 var _searchesSort = null
 var _searchesFilterTimer = null
 var _searchesSelectedIds = {}
+var UNGROUPED_ID = '__ungrouped__'
+
+function _loadCollapsedSearchGroups() {
+  try { _collapsedSearchGroups = JSON.parse(localStorage.getItem('collapsedSearchGroups') || '{}') || {} }
+  catch(e) { _collapsedSearchGroups = {} }
+}
+function _saveCollapsedSearchGroups() {
+  localStorage.setItem('collapsedSearchGroups', JSON.stringify(_collapsedSearchGroups))
+}
+
+function _genGroupId() {
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID()
+  return 'g-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+}
+
+function _groupById(id) {
+  return _searchGroups.find(function(g){ return String(g.id) === String(id) })
+}
+
+function _jobGroupId(job) {
+  return (job && job.groupId && _groupById(job.groupId)) ? String(job.groupId) : UNGROUPED_ID
+}
+
+function _escapeHtml(s) {
+  return (s == null ? '' : String(s))
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+function _persistSearchGroups(onDone) {
+  APIupdateSearchGroups({groups: JSON.stringify(_searchGroups)}, function(meta){
+    if(meta && Array.isArray(meta.searchGroups)) _searchGroups = meta.searchGroups
+    if(onDone) onDone()
+    renderSearchesTable()
+  })
+}
+
+function createNewSearchGroup() {
+  var newId = _genGroupId()
+  _searchGroups.push({id: newId, name: 'New Group'})
+  _persistSearchGroups(function(){
+    // Open inline rename on the newly added group once the table re-renders
+    _pendingRenameGroupId = newId
+  })
+}
+
+var _pendingRenameGroupId = null
+
+function renameSearchGroup(groupId) {
+  var g = _groupById(groupId)
+  if(!g) return
+  var $title = $('.searchGroupTitle[data-groupid="' + groupId + '"]')
+  if(!$title.length || $title.hasClass('editing')) return
+  var currentName = g.name
+  $title.addClass('editing').data('origname', currentName)
+  $title.html('<input type="text" class="searchGroupTitleInput form-control input-sm" data-groupid="' + groupId + '" value="' + _escapeHtml(currentName) + '" maxlength="80" style="display:inline-block;width:auto;min-width:160px;height:26px;padding:2px 6px;font-size:14px;font-weight:600">')
+  var $input = $title.find('input')
+  $input.trigger('focus').get(0).select()
+}
+
+function _commitRenameSearchGroup(groupId, rawName) {
+  var g = _groupById(groupId)
+  if(!g) return
+  var name = (rawName || '').trim().slice(0, 80)
+  if(!name || name === g.name) { renderSearchesTable(); return }
+  g.name = name
+  _persistSearchGroups()
+}
+
+function _cancelRenameSearchGroup() {
+  renderSearchesTable()
+}
+
+function deleteSearchGroup(groupId) {
+  var g = _groupById(groupId)
+  if(!g) return
+  showConfirmModal(
+    'Delete Group',
+    'Delete group "' + _escapeHtml(g.name) + '"? Searches inside will move to Ungrouped.',
+    function() {
+      _searchGroups = _searchGroups.filter(function(x){ return String(x.id) !== String(groupId) })
+      _persistSearchGroups(function(){
+        // Backend clears orphaned groupId on jobs, but refresh local copy
+        _searchesJobs.forEach(function(j){ if(String(j.groupId) === String(groupId)) delete j.groupId })
+      })
+    },
+    { confirmLabel: 'Delete', confirmClass: 'btn-danger' }
+  )
+}
+
+function toggleSearchGroupCollapse(groupId) {
+  _collapsedSearchGroups[groupId] = !_collapsedSearchGroups[groupId]
+  _saveCollapsedSearchGroups()
+  renderSearchesTable()
+}
+
+function toggleSearchGroupSelect(groupId, checked) {
+  $('.searchSelectCb[data-groupid="' + groupId + '"]').each(function(){
+    var id = $(this).data('jobid')
+    this.checked = checked
+    if(checked) _searchesSelectedIds[id] = true
+    else delete _searchesSelectedIds[id]
+  })
+  _syncGroupHeaderCheckboxes()
+  _syncSelectAllCheckbox()
+  updateViewSelectedBtn()
+  updateRefreshSelectedBtn()
+  updateMoveToGroupBtn()
+}
+
+function moveSelectedToGroup(groupId) {
+  var selected = Object.keys(_searchesSelectedIds)
+  if(!selected.length) return
+  var targetId = (groupId === UNGROUPED_ID || !groupId) ? '' : String(groupId)
+  var remaining = selected.length
+  selected.forEach(function(jobId){
+    var payload = {id: jobId, groupId: targetId}
+    var existing = _searchesJobs.find(function(j){ return String(j.id) === String(jobId) })
+    if(existing) payload.name = existing.name
+    APIupdateJob(payload, function(){
+      if(existing) {
+        if(targetId) existing.groupId = targetId
+        else delete existing.groupId
+      }
+      if(--remaining === 0) renderSearchesTable()
+    })
+  })
+}
+
+function _syncGroupHeaderCheckboxes() {
+  $('.searchGroupHeaderCb').each(function(){
+    var gid = $(this).data('groupid')
+    var cbs = $('.searchSelectCb[data-groupid="' + gid + '"]')
+    if(!cbs.length) { this.checked = false; this.indeterminate = false; return }
+    var checked = cbs.filter(':checked').length
+    this.checked = checked === cbs.length
+    this.indeterminate = checked > 0 && checked < cbs.length
+  })
+}
+
+function _syncSelectAllCheckbox() {
+  var cbs = $('.searchSelectCb')
+  var el = document.getElementById('selectAllSearches')
+  if(!el) return
+  if(!cbs.length) { el.checked = false; el.indeterminate = false; return }
+  var checked = cbs.filter(':checked').length
+  el.checked = checked === cbs.length
+  el.indeterminate = checked > 0 && checked < cbs.length
+}
+
+function updateMoveToGroupBtn() {
+  var count = Object.keys(_searchesSelectedIds).length
+  $('#moveToGroupBtn').prop('disabled', count === 0)
+  var menu = _searchGroups.map(function(g){
+    return '<li><a href="#" onclick="moveSelectedToGroup(\'' + g.id + '\');return false">' + _escapeHtml(g.name) + '</a></li>'
+  }).join('')
+  menu += (menu ? '<li class="divider"></li>' : '') + '<li><a href="#" onclick="moveSelectedToGroup(\'\');return false"><i class="fa fa-ban"></i> Ungrouped</a></li>'
+  $('#moveToGroupMenu').html(menu)
+}
 
 function renderSearchesTable() {
   var jobs = _searchesJobs.slice()
@@ -588,10 +795,16 @@ function renderSearchesTable() {
   }
   _renderSearchesRows(jobs)
   _updateSearchesSortIndicators()
-  var cbs = $('.searchSelectCb')
-  $('#selectAllSearches').prop('checked', cbs.length > 0 && cbs.length === cbs.filter(':checked').length)
+  _syncGroupHeaderCheckboxes()
+  _syncSelectAllCheckbox()
   updateViewSelectedBtn()
   updateRefreshSelectedBtn()
+  updateMoveToGroupBtn()
+  if(_pendingRenameGroupId) {
+    var pending = _pendingRenameGroupId
+    _pendingRenameGroupId = null
+    renameSearchGroup(pending)
+  }
 }
 
 function _renderSearchesRows(jobs) {
@@ -601,6 +814,53 @@ function _renderSearchesRows(jobs) {
     $tbody.append('<tr><td colspan="8" class="text-muted" style="text-align:center;padding:16px">No searches match.</td></tr>')
     return
   }
+
+  // Partition jobs by group, preserving _searchGroups order then Ungrouped last.
+  var jobsByGroup = {}
+  jobs.forEach(function(j){
+    var gid = _jobGroupId(j)
+    ;(jobsByGroup[gid] = jobsByGroup[gid] || []).push(j)
+  })
+  var orderedGroups = _searchGroups.map(function(g){ return {id: String(g.id), name: g.name, removable: true} })
+  if(jobsByGroup[UNGROUPED_ID] && jobsByGroup[UNGROUPED_ID].length)
+    orderedGroups.push({id: UNGROUPED_ID, name: 'Ungrouped', removable: false})
+  var onlyUngrouped = _searchGroups.length === 0
+  var renderGroupHeaders = !onlyUngrouped
+
+  for(var gi = 0; gi < orderedGroups.length; gi++) {
+    var grp = orderedGroups[gi]
+    var groupJobs = jobsByGroup[grp.id] || []
+    if(renderGroupHeaders) {
+      var collapsed = !!_collapsedSearchGroups[grp.id]
+      var chevron = collapsed ? 'fa-chevron-right' : 'fa-chevron-down'
+      var removeBtn = grp.removable
+        ? '<button type="button" class="btn btn-xs btn-link text-danger" style="margin-left:8px" onclick="deleteSearchGroup(\'' + grp.id + '\')" title="Delete group"><i class="fa fa-trash"></i></button>'
+        : ''
+      var renameBtn = grp.removable
+        ? '<button type="button" class="btn btn-xs btn-link" onclick="renameSearchGroup(\'' + grp.id + '\')" title="Rename group"><i class="fa fa-pencil"></i></button>'
+        : ''
+      var titleMarkup = grp.removable
+        ? '<span class="searchGroupTitle" data-groupid="' + grp.id + '" style="cursor:text" title="Click to rename">' + _escapeHtml(grp.name) + '</span>'
+        : '<span class="searchGroupTitle" data-groupid="' + grp.id + '">' + _escapeHtml(grp.name) + '</span>'
+      $tbody.append(
+        '<tr class="searchGroupHeader" data-groupid="' + grp.id + '" style="background:#f5f5f5">' +
+          '<td><input type="checkbox" class="searchGroupHeaderCb" data-groupid="' + grp.id + '"' + (groupJobs.length ? '' : ' disabled') + '></td>' +
+          '<td colspan="7" style="font-weight:600">' +
+            '<a href="#" onclick="toggleSearchGroupCollapse(\'' + grp.id + '\');return false" style="color:inherit;text-decoration:none;margin-right:6px"><i class="fa ' + chevron + '"></i></a>' +
+            titleMarkup +
+            ' <span class="text-muted" style="font-weight:normal">(' + groupJobs.length + ')</span>' +
+            renameBtn + removeBtn +
+          '</td>' +
+        '</tr>'
+      )
+      if(collapsed) continue
+    }
+    _appendJobRows($tbody, groupJobs, grp.id)
+  }
+  $('.BStooltip').tooltip({ trigger: 'hover', container: 'body' })
+}
+
+function _appendJobRows($tbody, jobs, groupId) {
   for(let i = 0; i < jobs.length; i++) {
     let job = jobs[i]
     let statusDom
@@ -635,7 +895,7 @@ function _renderSearchesRows(jobs) {
     let checkedAttr = _searchesSelectedIds[job.id] ? ' checked' : ''
     $tbody.append(`
       <tr>
-        <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}"${checkedAttr}></td>
+        <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}" data-groupid="${groupId}"${checkedAttr}></td>
         <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
         ${stopBtnHtml}
         <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
@@ -648,12 +908,11 @@ function _renderSearchesRows(jobs) {
         <td><a target="_blank" href="${job.url}">${linkLabel}</a></td>
       </tr>
     `)
-    $('#searchesTBody .editSearchBtn').last().data('id', job.id).data('name', $.parseHTML(job.name || ' ')[0].data).data('url', job.url).data('description', $.parseHTML(job.description || ' ')[0].data).data('platform', platform).data('gridDepth', job.gridDepth || 1)
+    $('#searchesTBody .editSearchBtn').last().data('id', job.id).data('name', $.parseHTML(job.name || ' ')[0].data).data('url', job.url).data('description', $.parseHTML(job.description || ' ')[0].data).data('platform', platform).data('gridDepth', job.gridDepth || 1).data('groupId', job.groupId || '')
     $('#searchesTBody .delSearchBtn').last().data('id', job.id)
     if(stopBtnHtml)
       $('#searchesTBody .stopSearchBtn').last().data('id', job.id).data('name', job.name)
   }
-  $('.BStooltip').tooltip({ trigger: 'hover', container: 'body' })
 }
 
 function _updateSearchesSortIndicators() {
@@ -718,6 +977,7 @@ function searchesUnload()
   $('#editSearchUrlParams').off('input.airbnbParams change.airbnbParams')
   $('#searchUrlBox').off('input.airbnbParams change.airbnbParams')
   $(document).off('click.searchesActions')
+  $(document).off('keydown.searchesActions blur.searchesActions')
   $('#searchesFilterInput').off('input.searchesFilter')
   $('#searchesTable').off('click.searchesSort')
   if(_searchesFilterTimer) { clearTimeout(_searchesFilterTimer); _searchesFilterTimer = null }
@@ -725,6 +985,7 @@ function searchesUnload()
   $('#newSearchUrlInput').off('input')
   $('#newSearchForm textarea[name="description"]').off('keydown').removeData('manual')
   $(document).off('change', '.searchSelectCb')
+  $(document).off('change', '.searchGroupHeaderCb')
   $('#selectAllSearches').off('change')
   if(window._searchesSocketHandler) {
     socket.off('all', window._searchesSocketHandler)

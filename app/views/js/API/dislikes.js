@@ -34,3 +34,15 @@ function APIgetDislikes(callback) {
         error: function(err){ console.log(err.responseJSON) }
     })
 }
+
+function APIgetDislikedAds(params, callback) {
+    $.ajax({
+        type: "GET",
+        dataType: "json",
+        url: apiURL+'dislikedAds',
+        data: params,
+        beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
+        success: function(data){ if(callback) callback(data.meta) },
+        error: function(err){ console.log(err.responseJSON) }
+    })
+}

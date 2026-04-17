@@ -92,6 +92,43 @@ module.exports = {
 			return callback({status:ApiStatus.SUCCESS, meta:user})
 		}).catch((err) => {Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})})//.then(() => db.close())
     },
+	updateSearchGroups: async function(params, authUser, callback){
+		try{
+			let raw = params.groups
+			if(typeof raw === 'string') {
+				try { raw = JSON.parse(raw) } catch(e) { raw = null }
+			}
+			if(!Array.isArray(raw))
+				return callback({ status: ApiStatus.DB_ERROR, meta: {message:"groups must be an array"}})
+			const groups = []
+			const seen = new Set()
+			for(const g of raw) {
+				if(!g || !g.id) continue
+				const id = String(g.id)
+				if(seen.has(id)) continue
+				seen.add(id)
+				const name = (g.name || '').toString().slice(0, 80).trim() || 'Untitled'
+				groups.push({id, name})
+			}
+			const validIds = new Set(groups.map(g => g.id))
+			const user = await params.db.get('users').findOne({_id: authUser._id})
+			if(!user)
+				return callback({ status: ApiStatus.USER_NO_LONGER_EXISTS, meta: null })
+			const jobs = (user.jobs || []).map(j => {
+				if(j && j.groupId && !validIds.has(String(j.groupId))) {
+					const copy = Object.assign({}, j)
+					delete copy.groupId
+					return copy
+				}
+				return j
+			})
+			await params.db.get('users').update({_id: authUser._id}, {$set: {searchGroups: groups, jobs}})
+			return callback({status: ApiStatus.SUCCESS, meta: {searchGroups: groups}})
+		}
+		catch(err) {
+			Helpers.logger.log(err); return callback({ status: ApiStatus.DB_ERROR, meta: err})
+		}
+	},
 }
 
 module.exports.encryptField = encryptField

@@ -212,8 +212,10 @@ function toggleDislikeBtn(el) {
 	var adId = $el.data('adid')
 	toggleDislike(adId, function(isDis) {
 		$el.find('i').css('color', isDis ? '#34495e' : '#ccc')
-		// When the filter is active, clicking dislike on a visible listing removes it.
-		if(_hideDisliked && isDis) {
+		// Remove from view when: dislike-hide filter is active and user just disliked,
+		// OR user just un-disliked while viewing the dislikes page.
+		var onDislikesPage = window.currentState === 'dislikes'
+		if((_hideDisliked && isDis) || (onDislikesPage && !isDis)) {
 			if(typeof _markers !== 'undefined' && _markers.length) {
 				var m = _markers.find(function(mk){ return mk.adData && mk.adData._id === adId })
 				if(m) {

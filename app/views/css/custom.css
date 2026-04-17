@@ -388,7 +388,8 @@ tr td{
 }
 .grid-card-actions{
     display:flex;
-    gap:6px;
+    flex-wrap:wrap;
+    gap:6px 6px;
     align-items:center;
 }
 

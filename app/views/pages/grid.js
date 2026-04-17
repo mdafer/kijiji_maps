@@ -282,11 +282,11 @@ function buildCardHtml(ad) {
   html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   html += '      '+photoBtnHtml
   if(ad.platform === 'airbnb') {
-    if(ad.availability) html += '      <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i> Availability</button>'
-    else html += '      <button class="btn btn-xs btn-default" style="opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
+    if(ad.availability) html += '      <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i></button>'
+    else html += '      <button class="btn btn-xs btn-default" style="opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i></button>'
   }
   if(ad.lat && ad.lon) html += '      <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
-  html += '      <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank"><i class="fa fa-external-link"></i> Airbnb</a>'
+  html += '      <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank" title="Open Airbnb listing"><i class="fa fa-external-link"></i></a>'
   html += '    </div>'
   html += '  </div>'
   html += '</div>'

@@ -88,6 +88,10 @@ module.exports = {
 			let job = user.jobs.find(job => { return job.id == params.id})
 			Object.assign(job, pick(params, ['name', 'url', 'description']))
 			if(params.gridDepth !== undefined) job.gridDepth = Number(params.gridDepth) || 1
+			if(params.groupId !== undefined) {
+				if(params.groupId === '' || params.groupId === null) delete job.groupId
+				else job.groupId = String(params.groupId)
+			}
 			job = await params.db.get('users').findOneAndUpdate({"jobs.id":params.id},{$set: {"jobs.$":job}})
 			callback({status: ApiStatus.SUCCESS, meta: job})
 		}

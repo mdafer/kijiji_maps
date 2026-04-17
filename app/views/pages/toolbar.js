@@ -376,6 +376,8 @@ function switchToGridMode(mode) {
   var state = window.currentState
   if(state === 'favorites') {
     switchFavView('grid')
+  } else if(state === 'dislikes') {
+    switchDislikedView('grid')
   } else if(state === 'grid') {
     renderGrid()
   } else {
@@ -388,6 +390,8 @@ function switchToGridMode(mode) {
 function switchToMapView() {
   if(window.currentState === 'favorites') {
     switchFavView('map')
+  } else if(window.currentState === 'dislikes') {
+    switchDislikedView('map')
   } else if(jobId && jobName) {
     loadpage('map', true)
   }

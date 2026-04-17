@@ -1,13 +1,13 @@
 function APIaddNewSearch(params, callback=null)
 {
-	$.ajax({ 
+	$.ajax({
         type: "PUT",
         dataType: "json",
         contentType: "application/json",
         /*processData: false,
         contentType: false,*/
         url: apiURL+'job',
-        data: params,
+        data: typeof params === 'string' ? params : JSON.stringify(params),
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token);},
         success: function(data){
     		if(callback)
@@ -105,12 +105,12 @@ function APIstopJob(params, callback=null)
 
 function APIupdateJob(params, callback=null)
 {
-    $.ajax({ 
+    $.ajax({
         type: "PATCH",
         dataType: "json",
         contentType: "application/json",
         url: apiURL+'job',
-        data: params,
+        data: typeof params === 'string' ? params : JSON.stringify(params),
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
         success: function(data){
             if(callback)
@@ -165,6 +165,30 @@ function APIgetJobAmenities(jobId, callback=null)
             if(callback) callback(data.meta)
         },
         error: function(err){
+            console.log(err.responseJSON)
+        }
+    })
+}
+
+function APIupdateSearchGroups(params, callback=null)
+{
+    $.ajax({
+        type: "PATCH",
+        dataType: "json",
+        contentType: "application/json",
+        url: apiURL+'searchGroups',
+        data: JSON.stringify(params),
+        beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
+        success: function(data){
+            if(callback) callback(data.meta)
+        },
+        error: function(err){
+            alert(err.responseJSON && err.responseJSON.msg || 'Failed to save groups')
+            if(err.responseJSON && clearStorageErrorCodes.includes(err.responseJSON.status))
+            {
+                clearLocalStorage()
+                renderpage()
+            }
             console.log(err.responseJSON)
         }
     })

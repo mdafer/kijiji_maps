@@ -121,11 +121,9 @@
           </li>
           
 
-          <li class="treeview">
-            <a href="#"><i class="fa fa-search text-green"></i> <span>Searches</span>
-              <span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span>
-            </a>
-            <ul class="treeview-menu">
+          <li>
+            <a href="#searches" onclick='return loadpage("searches", true)'><i class="fa fa-search text-green"></i> <span>Searches</span></a>
+            <ul class="treeview-menu" style="display:block">
               <li><a href="#searches" onclick='return loadpage("searches?platform=kijiji", true)'><i class="fa fa-circle-o text-green"></i> Kijiji</a></li>
               <li><a href="#searches" onclick='return loadpage("searches?platform=airbnb", true)'><i class="fa fa-circle-o text-red"></i> Airbnb</a></li>
               <li><a href="#searches" onclick='return loadpage("searches?platform=facebook", true)'><i class="fa fa-circle-o text-blue"></i> Facebook</a></li>
@@ -133,6 +131,7 @@
           </li>
           <li><a href="#map" onclick='loadpage("map")'><i class="fa fa-map text-green"></i> <span>Map</span></a></li>
           <li><a href="#favorites" onclick='loadpage("favorites", true)'><i class="fa fa-heart text-red"></i> <span>Favorites</span></a></li>
+          <li><a href="#dislikes" onclick='loadpage("dislikes", true)'><i class="fa fa-thumbs-down text-blue"></i> <span>Disliked</span></a></li>
           <li><a href="#neighbors" onclick='loadpage("neighbors")'><i class="fa fa-circle-o text-aqua" ></i> <span>Friends</span></a></li>
           <!--<li><a target="_blank" href="http://getgoldoon.com/#contact"><i class="fa fa-circle-o text-white"></i> <span>Contact US</span></a></li>-->
         </ul>
@@ -432,6 +431,7 @@
 <script src="pages/map.js"></script>
 <script src="pages/grid.js"></script>
 <script src="pages/favorites.js"></script>
+<script src="pages/dislikes.js"></script>
 <script src="pages/causedetail.js"></script>
 <script src="pages/neighbordetail.js"></script>
 
