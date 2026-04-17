@@ -740,8 +740,9 @@ module.exports = {
 				Helpers.logger.log({print: `Skipping expired-ads cleanup: this run found 0 listings (soft-block or empty search) — preserving previously cached ads`, channels:params.jobId+'jobWarning'})
 			} else {
 				try{
-					const result = await params.db.get('ads').remove({$and:[{["jobs."+params.jobId]:{ $exists: true}},{['jobs.'+params.jobId+'.fingerprint']: {$ne: params.fingerprint}}]})
-					Helpers.logger.log({print: `All expired ads have been removed! Removed: ${result.result.n} ads.`, channels:params.jobId+'jobUpdate'})
+					const favoritedIds = await Helpers.common.getFavoritedAdIds(params.db)
+					const result = await params.db.get('ads').remove({$and:[{["jobs."+params.jobId]:{ $exists: true}},{['jobs.'+params.jobId+'.fingerprint']: {$ne: params.fingerprint}},{_id: {$nin: favoritedIds}}]})
+					Helpers.logger.log({print: `All expired ads have been removed! Removed: ${result.result.n} ads. (preserved ${favoritedIds.length} favorited)`, channels:params.jobId+'jobUpdate'})
 				}
 				catch(err){Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'})}
 			}
