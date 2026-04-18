@@ -151,9 +151,9 @@ tr td{
     background:#e8891a;
     border-color:#e8891a;
 }
-.amenity-filter-bubble.active.amenity-display{
-    background:#34a853;
-    border-color:#34a853;
+.amenity-filter-bubble.active.amenity-hide{
+    background:#c0392b;
+    border-color:#c0392b;
 }
 
 #photoGalleryOverlay{

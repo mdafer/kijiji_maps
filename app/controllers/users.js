@@ -67,7 +67,7 @@ module.exports = {
 			let user = await params.db.get('users').findOne({ '_id': authUser._id })
 			if (!user)
 				return callback({ status: ApiStatus.EMAIL_NOT_FOUND, meta: null })
-			let userObject = pick(params,['email', 'firstName', 'lastName', 'displayAmenities'])
+			let userObject = pick(params,['email', 'firstName', 'lastName', 'hideAmenities'])
 			if(params.password)
 				userObject.password = bcrypt.hashSync(params.password, 10)
 			if(params.fbEmail !== undefined)

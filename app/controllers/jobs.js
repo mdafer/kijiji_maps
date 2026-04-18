@@ -240,7 +240,8 @@ module.exports = {
 			const groupIds = new Set(exportJobs.map(j => j.groupId).filter(Boolean).map(String))
 			const exportGroups = (user.searchGroups || []).filter(g => groupIds.has(String(g.id)))
 			const result = { version: 1, exportedAt: new Date(), jobs: exportJobs, searchGroups: exportGroups }
-			if(params.includeAds === true || params.includeAds === 'true') {
+			const isTruthy = v => v === true || v === 'true'
+			if(isTruthy(params.includeAds)) {
 				const adQuery = { $or: exportJobs.map(j => ({[`jobs.${j.id}`]: {$exists: true}})) }
 				const ads = adQuery.$or.length ? await params.db.get('ads').find(adQuery) : []
 				ads.forEach(ad => {
@@ -251,6 +252,12 @@ module.exports = {
 				})
 				result.ads = ads
 			}
+			if(isTruthy(params.includeFavorites))
+				result.favorites = Array.isArray(user.favorites) ? user.favorites.slice() : []
+			if(isTruthy(params.includeDislikes))
+				result.dislikes = Array.isArray(user.dislikes) ? user.dislikes.slice() : []
+			if(isTruthy(params.includeHideAmenities))
+				result.hideAmenities = user.hideAmenities || ''
 			return callback({status: ApiStatus.SUCCESS, meta: result})
 		}
 		catch(err) {
@@ -269,11 +276,21 @@ module.exports = {
 			const incomingJobs = Array.isArray(payload.jobs) ? payload.jobs : []
 			const incomingGroups = Array.isArray(payload.searchGroups) ? payload.searchGroups : []
 			const incomingAds = Array.isArray(payload.ads) ? payload.ads : []
+			const incomingFavorites = Array.isArray(payload.favorites) ? payload.favorites : null
+			const incomingDislikes = Array.isArray(payload.dislikes) ? payload.dislikes : null
+			const incomingHideAmenities = typeof payload.hideAmenities === 'string' ? payload.hideAmenities : null
 
 			const user = await params.db.get('users').findOne({_id: authUser._id})
 			if(!user) return callback({ status: ApiStatus.USER_NO_LONGER_EXISTS, meta: null })
 
-			const stats = { groups: {added:0, updated:0, skipped:0}, jobs: {added:0, updated:0, skipped:0}, ads: {added:0, updated:0, skipped:0} }
+			const stats = {
+				groups: {added:0, updated:0, skipped:0},
+				jobs: {added:0, updated:0, skipped:0},
+				ads: {added:0, updated:0, skipped:0},
+				favorites: {added:0, skipped:0},
+				dislikes: {added:0, skipped:0},
+				hideAmenities: {added:0, skipped:0}
+			}
 
 			const groupsById = new Map((user.searchGroups || []).map(g => [String(g.id), g]))
 			for(const g of incomingGroups) {
@@ -335,6 +352,40 @@ module.exports = {
 					await params.db.get('ads').insert(Object.assign({_id: adId}, rest))
 					stats.ads.added++
 				}
+			}
+
+			if(incomingFavorites) {
+				const cleaned = incomingFavorites.filter(f => f != null).map(String)
+				const existingSet = new Set((user.favorites || []).map(String))
+				cleaned.forEach(id => {
+					if(existingSet.has(id)) stats.favorites.skipped++
+					else stats.favorites.added++
+				})
+				const finalList = override ? Array.from(new Set(cleaned)) : Array.from(new Set([...existingSet, ...cleaned]))
+				await params.db.get('users').update({_id: authUser._id}, {$set: {favorites: finalList}})
+			}
+
+			if(incomingDislikes) {
+				const cleaned = incomingDislikes.filter(f => f != null).map(String)
+				const existingSet = new Set((user.dislikes || []).map(String))
+				cleaned.forEach(id => {
+					if(existingSet.has(id)) stats.dislikes.skipped++
+					else stats.dislikes.added++
+				})
+				const finalList = override ? Array.from(new Set(cleaned)) : Array.from(new Set([...existingSet, ...cleaned]))
+				await params.db.get('users').update({_id: authUser._id}, {$set: {dislikes: finalList}})
+			}
+
+			if(incomingHideAmenities !== null) {
+				const incomingList = incomingHideAmenities.split(',').map(s => s.trim()).filter(Boolean)
+				const existingList = (user.hideAmenities || '').split(',').map(s => s.trim()).filter(Boolean)
+				const existingSet = new Set(existingList)
+				incomingList.forEach(a => {
+					if(existingSet.has(a)) stats.hideAmenities.skipped++
+					else stats.hideAmenities.added++
+				})
+				const finalList = override ? Array.from(new Set(incomingList)) : Array.from(new Set([...existingList, ...incomingList]))
+				await params.db.get('users').update({_id: authUser._id}, {$set: {hideAmenities: finalList.join(',')}})
 			}
 
 			return callback({status: ApiStatus.SUCCESS, meta: stats})

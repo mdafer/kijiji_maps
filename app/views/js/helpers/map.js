@@ -10,7 +10,7 @@ function MongoDateFromId(objectId) {
 
 var _allAmenities = new Set()
 var _amenityIdMap = {}
-var _savedDisplayAmenities = []
+var _savedHideAmenities = []
 
 function buildPopupHtml(listing) {
   var isAirbnb = listing.platform === 'airbnb'
@@ -35,8 +35,8 @@ function buildPopupHtml(listing) {
       html += '<p style="margin:2px 0;font-size:11px;color:#666">'+listing.categories.join(', ')+'</p>'
 
     if(listing.amenities && listing.amenities.length) {
-      var displayList = getDisplayAmenities()
-      var amenitiesForPopup = displayList.length ? listing.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : listing.amenities
+      var hideList = getHideAmenities()
+      var amenitiesForPopup = hideList.length ? listing.amenities.filter(function(a){ return hideList.indexOf(a) === -1 }) : listing.amenities
       if(amenitiesForPopup.length) {
         html += '<div style="margin:4px 0;display:flex;flex-wrap:wrap;gap:3px">'
         amenitiesForPopup.forEach(function(a){ html += '<span class="amenity-bubble">'+a+'</span>' })
@@ -208,8 +208,8 @@ function updateAmenityBubbles(){
   var andSelected = (($('#amenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
   var orSelected = (($('#orAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
   var allSorted = Array.from(_allAmenities).sort()
-  var displayList = getDisplayAmenities()
-  var sorted = displayList.length ? allSorted.filter(function(a){ return displayList.indexOf(a) !== -1 }) : allSorted
+  var hideList = getHideAmenities()
+  var sorted = hideList.length ? allSorted.filter(function(a){ return hideList.indexOf(a) === -1 }) : allSorted
   var searchTerm = ($('#amenitySearch').val() || '').toLowerCase()
   if(searchTerm) sorted = sorted.filter(function(a){ return a.toLowerCase().indexOf(searchTerm) !== -1 })
   var andHtml = '', orHtml = ''
@@ -266,8 +266,8 @@ function syncAmenityInputs(){
   $('#orAmenities').val(orSelected.join(','))
 }
 
-function getDisplayAmenities(){
-  return _savedDisplayAmenities
+function getHideAmenities(){
+  return _savedHideAmenities
 }
 
 // --- Drawing tools for geographic filtering ---

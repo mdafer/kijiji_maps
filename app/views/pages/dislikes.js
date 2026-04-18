@@ -28,7 +28,7 @@ function dislikesfunc() {
   $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
 
   APIgetProfile(null, function(user){
-    if(user && user.displayAmenities) _savedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
+    if(user && user.hideAmenities) _savedHideAmenities = user.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
     _disJobs = (user && user.jobs) ? user.jobs : []
     $('#disJobFilters').find('label').remove()
     _disJobs.forEach(function(j){

@@ -48,9 +48,9 @@ function gridfunc() {
   applyUrlParamsToFilters()
   updateSortLabel()
 
-  // Load displayAmenities from user account settings
+  // Load hideAmenities from user account settings
   APIgetProfile(null, function(user){
-    if(user && user.displayAmenities) _savedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
+    if(user && user.hideAmenities) _savedHideAmenities = user.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
   })
 
   $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
@@ -249,8 +249,8 @@ function buildCardHtml(listing) {
 
   var amenityHtml = ''
   if(listing.amenities && listing.amenities.length) {
-    var displayList = getDisplayAmenities()
-    var shownAmenities = displayList.length ? listing.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : listing.amenities
+    var hideList = getHideAmenities()
+    var shownAmenities = hideList.length ? listing.amenities.filter(function(a){ return hideList.indexOf(a) === -1 }) : listing.amenities
     if(shownAmenities.length) {
       amenityHtml = '<div class="grid-card-amenities">'
       shownAmenities.forEach(function(a){ amenityHtml += '<span class="amenity-bubble">'+a+'</span>' })
@@ -338,8 +338,8 @@ function buildRowHtml(listing) {
 
   var amenityHtml = ''
   if(listing.amenities && listing.amenities.length) {
-    var displayList = getDisplayAmenities()
-    var shownAmenities = displayList.length ? listing.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : listing.amenities
+    var hideList = getHideAmenities()
+    var shownAmenities = hideList.length ? listing.amenities.filter(function(a){ return hideList.indexOf(a) === -1 }) : listing.amenities
     if(shownAmenities.length) {
       amenityHtml = '<span class="grid-row-amenities">'
       shownAmenities.forEach(function(a){ amenityHtml += '<span class="amenity-bubble">'+a+'</span>' })

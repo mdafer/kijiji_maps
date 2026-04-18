@@ -27,7 +27,7 @@ function favoritesfunc() {
 
   // Populate job checkboxes
   APIgetProfile(null, function(user){
-    if(user && user.displayAmenities) _savedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
+    if(user && user.hideAmenities) _savedHideAmenities = user.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
     _favJobs = (user && user.jobs) ? user.jobs : []
     $('#favJobFilters').find('label').remove()
     _favJobs.forEach(function(j){

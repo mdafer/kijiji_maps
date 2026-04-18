@@ -43,9 +43,9 @@ function mapfunc()
   restoreHideDisliked()
   applyUrlParamsToFilters()
 
-  // Load displayAmenities from user account settings
+  // Load hideAmenities from user account settings
   APIgetProfile(null, function(user){
-    if(user && user.displayAmenities) _savedDisplayAmenities = user.displayAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
+    if(user && user.hideAmenities) _savedHideAmenities = user.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
   })
 
   $('#filtersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })

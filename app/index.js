@@ -145,7 +145,7 @@ app.patch('/user', [
 		check('lastName').optional().trim().escape(),
   		check('email').optional().isEmail().normalizeEmail(),
   		check('password').optional().isLength({ min: 8 }),
-  		check('displayAmenities').optional().trim().escape()
+  		check('hideAmenities').optional().trim().escape()
 	],function(req, res, next){
 	Helpers.router.finish(req, res, Controllers.users.updateUser);
 });
@@ -182,7 +182,6 @@ app.patch('/job', [
 		check('name').optional().trim().escape(),
   		check('url').optional().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com']})),
   		check('description').optional().trim().escape(),
-  		check('displayAmenities').optional().trim().escape(),
   		check('groupId').optional({nullable:true, checkFalsy:false}).trim().escape()
 	],function(req, res, next){
 	Helpers.router.finish(req, res, Controllers.jobs.updateJob);

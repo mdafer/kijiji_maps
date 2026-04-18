@@ -117,13 +117,13 @@ $('#profileForm').on('submit', function(event) {
 });
 
 $('#profileModal').on('show.bs.modal', function(){
-	var bubblesDiv = $('#profileDisplayAmenityBubbles')
+	var bubblesDiv = $('#profileHideAmenityBubbles')
 	bubblesDiv.html('<small style="color:#999">Loading amenities...</small>')
 	APIgetProfile(null, function(user){
 		$('#profileFbEmail').val(user.fbEmail || '')
 		$('#profileFbPassword').val('')
-		var savedDA = (user.displayAmenities || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-		$('#profileDisplayAmenities').val(user.displayAmenities || '')
+		var savedHA = (user.hideAmenities || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
+		$('#profileHideAmenities').val(user.hideAmenities || '')
 		if(!user.jobs || !user.jobs.length) {
 			bubblesDiv.html('<small style="color:#999">No searches found</small>')
 			return
@@ -146,8 +146,8 @@ $('#profileModal').on('show.bs.modal', function(){
 					var html = ''
 					sorted.forEach(function(a){
 						var idTooltip = allIdMap[a] ? ' title="Airbnb ID: '+allIdMap[a]+'"' : ''
-						var active = savedDA.indexOf(a) !== -1
-						html += '<span class="amenity-filter-bubble amenity-display'+(active?' active':'')+'"'+idTooltip+' onclick="toggleProfileDisplayAmenity(this)">'+a+'</span>'
+						var active = savedHA.indexOf(a) !== -1
+						html += '<span class="amenity-filter-bubble amenity-hide'+(active?' active':'')+'"'+idTooltip+' onclick="toggleProfileHideAmenity(this)">'+a+'</span>'
 					})
 					bubblesDiv.html(html)
 				}
@@ -156,16 +156,16 @@ $('#profileModal').on('show.bs.modal', function(){
 	})
 });
 
-function toggleProfileDisplayAmenity(el){
+function toggleProfileHideAmenity(el){
 	$(el).toggleClass('active')
 	var selected = []
-	$('#profileDisplayAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
-	$('#profileDisplayAmenities').val(selected.join(','))
+	$('#profileHideAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
+	$('#profileHideAmenities').val(selected.join(','))
 }
 
 function filterProfileAmenityBubbles(){
 	var term = ($('#profileAmenitySearch').val() || '').toLowerCase()
-	$('#profileDisplayAmenityBubbles .amenity-filter-bubble').each(function(){
+	$('#profileHideAmenityBubbles .amenity-filter-bubble').each(function(){
 		var match = !term || $(this).text().toLowerCase().indexOf(term) !== -1
 		$(this).toggle(match)
 	})
@@ -761,7 +761,7 @@ function clearAllFilters() {
 	localStorage.removeItem('savedFilters')
 	localStorage.removeItem('savedShapeGeo')
 	localStorage.removeItem('savedFavoritesOnly')
-	$('.amenity-filter-bubble.active').not('.amenity-display').removeClass('active')
+	$('.amenity-filter-bubble.active').not('.amenity-hide').removeClass('active')
 	if(typeof syncAmenityInputs === 'function') syncAmenityInputs()
 	updateFilterIndicator()
 	if(window.currentState === 'map' && typeof getListingsAsync === 'function')

@@ -756,16 +756,43 @@ function exportSelectedSearches() {
   var selected = Object.keys(_searchesSelectedIds)
   if(!selected.length) return
   var modalBody =
-    '<p>Export ' + selected.length + ' search' + (selected.length > 1 ? 'es' : '') + ' and their groups to a JSON file?</p>' +
-    '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="exportIncludeListingsCb" style="margin-right:5px"> Include scraped listings</label>' +
+    '<p>Export ' + selected.length + ' search' + (selected.length > 1 ? 'es' : '') + ' and their groups to a JSON file.</p>' +
+    '<p style="margin-top:8px;margin-bottom:4px"><b>Include:</b></p>' +
+    '<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="exportIncludeAdsCb" style="margin-right:6px">Scraped listings</label>' +
+    '<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="exportIncludeFavoritesCb" style="margin-right:6px">Favorites</label>' +
+    '<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="exportIncludeDislikesCb" style="margin-right:6px">Dislikes</label>' +
+    '<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="exportIncludeHideAmenitiesCb" style="margin-right:6px">Hidden amenities (profile setting)</label>' +
+    '<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="exportIncludeSeenCb" style="margin-right:6px">Seen listings (for selected searches)</label>' +
     '<p class="text-muted" style="margin-top:6px;font-size:12px">Listings can be large. Images load from external URLs so they stay working on import.</p>'
   showConfirmModal(
     'Export Searches',
     modalBody,
     function() {
-      var includeListings = $('#exportIncludeListingsCb').is(':checked')
-      APIexportSearches({ jobIds: selected, includeListings: includeListings }, function(payload) {
+      var includeAds = $('#exportIncludeAdsCb').is(':checked')
+      var includeFavorites = $('#exportIncludeFavoritesCb').is(':checked')
+      var includeDislikes = $('#exportIncludeDislikesCb').is(':checked')
+      var includeHideAmenities = $('#exportIncludeHideAmenitiesCb').is(':checked')
+      var includeSeen = $('#exportIncludeSeenCb').is(':checked')
+      APIexportSearches({
+        jobIds: selected,
+        includeAds: includeAds,
+        includeFavorites: includeFavorites,
+        includeDislikes: includeDislikes,
+        includeHideAmenities: includeHideAmenities
+      }, function(payload) {
         if(!payload) return
+        if(includeSeen) {
+          var seenItems = {}
+          selected.forEach(function(id) {
+            try {
+              var raw = localStorage.getItem('visitedUrls' + id)
+              if(!raw) return
+              var arr = JSON.parse(raw)
+              if(Array.isArray(arr) && arr.length) seenItems[id] = arr
+            } catch(e) {}
+          })
+          if(Object.keys(seenItems).length) payload.seenItems = seenItems
+        }
         var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
         var url = URL.createObjectURL(blob)
         var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -791,28 +818,104 @@ function importSearchesFromFile(file) {
     catch(err) { showAlertModal('Invalid File', 'This is not a valid JSON export file.'); return }
     var jobCount = Array.isArray(payload.jobs) ? payload.jobs.length : 0
     var groupCount = Array.isArray(payload.searchGroups) ? payload.searchGroups.length : 0
-    var listingCount = Array.isArray(payload.listings) ? payload.listings.length : 0
-    if(!jobCount && !groupCount) {
-      showAlertModal('Nothing to Import', 'This file contains no searches or groups.')
+    var adCount = Array.isArray(payload.ads) ? payload.ads.length : 0
+    var favoriteCount = Array.isArray(payload.favorites) ? payload.favorites.length : 0
+    var dislikeCount = Array.isArray(payload.dislikes) ? payload.dislikes.length : 0
+    var hasHideAmenities = typeof payload.hideAmenities === 'string'
+    var hideAmenitiesList = hasHideAmenities ? payload.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean) : []
+    var seenItems = (payload.seenItems && typeof payload.seenItems === 'object') ? payload.seenItems : null
+    var seenJobCount = seenItems ? Object.keys(seenItems).length : 0
+    var seenTotal = 0
+    if(seenItems) Object.keys(seenItems).forEach(function(k){ if(Array.isArray(seenItems[k])) seenTotal += seenItems[k].length })
+
+    if(!jobCount && !groupCount && !adCount && !favoriteCount && !dislikeCount && !hideAmenitiesList.length && !seenJobCount) {
+      showAlertModal('Nothing to Import', 'This file contains no importable data.')
       return
     }
-    var summary = jobCount + ' search' + (jobCount === 1 ? '' : 'es')
-    summary += ', ' + groupCount + ' group' + (groupCount === 1 ? '' : 's')
-    if(listingCount) summary += ', ' + listingCount + ' listing' + (listingCount === 1 ? '' : 's')
+
+    var rows = []
+    if(jobCount || groupCount) {
+      var parts = []
+      if(jobCount) parts.push(jobCount + ' search' + (jobCount === 1 ? '' : 'es'))
+      if(groupCount) parts.push(groupCount + ' group' + (groupCount === 1 ? '' : 's'))
+      rows.push('<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="importIncludeSearchesCb" checked style="margin-right:6px">Searches & groups (' + parts.join(', ') + ')</label>')
+    }
+    if(adCount)
+      rows.push('<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="importIncludeAdsCb" checked style="margin-right:6px">Scraped listings (' + adCount + ')</label>')
+    if(favoriteCount)
+      rows.push('<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="importIncludeFavoritesCb" checked style="margin-right:6px">Favorites (' + favoriteCount + ')</label>')
+    if(dislikeCount)
+      rows.push('<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="importIncludeDislikesCb" checked style="margin-right:6px">Dislikes (' + dislikeCount + ')</label>')
+    if(hideAmenitiesList.length)
+      rows.push('<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="importIncludeHideAmenitiesCb" checked style="margin-right:6px">Hidden amenities (' + hideAmenitiesList.length + ')</label>')
+    if(seenJobCount)
+      rows.push('<label style="display:block;font-weight:normal;cursor:pointer;margin:4px 0"><input type="checkbox" id="importIncludeSeenCb" checked style="margin-right:6px">Seen listings (' + seenTotal + ' across ' + seenJobCount + ' search' + (seenJobCount === 1 ? '' : 'es') + ')</label>')
+
     var modalBody =
-      '<p>Import ' + summary + '?</p>' +
-      '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="importOverrideCb" style="margin-right:5px"> Override existing entries (by ID)</label>' +
-      '<p class="text-muted" style="margin-top:6px;font-size:12px">Unchecked: new items are added, duplicates are skipped.</p>'
+      '<p><b>Select what to import:</b></p>' + rows.join('') +
+      '<hr style="margin:10px 0">' +
+      '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="importOverrideCb" style="margin-right:5px"> Override existing entries</label>' +
+      '<p class="text-muted" style="margin-top:6px;font-size:12px">Unchecked: new items are added, duplicates are skipped. Favorites/dislikes/seen items are merged with yours.</p>'
+
     showConfirmModal(
       'Import Searches',
       modalBody,
       function() {
         var override = $('#importOverrideCb').is(':checked')
-        APIimportSearches({ payload: payload, override: override }, function(stats) {
+        var doSearches = (jobCount || groupCount) && $('#importIncludeSearchesCb').is(':checked')
+        var doAds = adCount && $('#importIncludeAdsCb').is(':checked')
+        var doFavorites = favoriteCount && $('#importIncludeFavoritesCb').is(':checked')
+        var doDislikes = dislikeCount && $('#importIncludeDislikesCb').is(':checked')
+        var doHideAmenities = hideAmenitiesList.length && $('#importIncludeHideAmenitiesCb').is(':checked')
+        var doSeen = seenJobCount && $('#importIncludeSeenCb').is(':checked')
+
+        var filteredPayload = {
+          jobs: doSearches ? payload.jobs : [],
+          searchGroups: doSearches ? payload.searchGroups : [],
+          ads: doAds ? payload.ads : []
+        }
+        if(doFavorites) filteredPayload.favorites = payload.favorites
+        if(doDislikes) filteredPayload.dislikes = payload.dislikes
+        if(doHideAmenities) filteredPayload.hideAmenities = payload.hideAmenities
+
+        APIimportSearches({ payload: filteredPayload, override: override }, function(stats) {
           if(!stats) return
-          var msg = '<p><b>Groups:</b> ' + stats.groups.added + ' added, ' + stats.groups.updated + ' updated, ' + stats.groups.skipped + ' skipped</p>' +
-                    '<p><b>Searches:</b> ' + stats.jobs.added + ' added, ' + stats.jobs.updated + ' updated, ' + stats.jobs.skipped + ' skipped</p>'
-          if(listingCount) msg += '<p><b>Listings:</b> ' + stats.listings.added + ' added, ' + stats.listings.updated + ' updated, ' + stats.listings.skipped + ' skipped</p>'
+
+          var seenApplied = 0
+          if(doSeen) {
+            Object.keys(seenItems).forEach(function(id) {
+              var arr = seenItems[id]
+              if(!Array.isArray(arr) || !arr.length) return
+              try {
+                var existing = []
+                if(!override) {
+                  var raw = localStorage.getItem('visitedUrls' + id)
+                  if(raw) { try { existing = JSON.parse(raw) || [] } catch(e) {} }
+                }
+                var merged = existing.concat(arr)
+                var unique = merged.filter(function(v, i){ return merged.indexOf(v) === i })
+                localStorage.setItem('visitedUrls' + id, JSON.stringify(unique))
+                seenApplied += arr.length
+              } catch(e) {}
+            })
+          }
+
+          var msg = ''
+          if(doSearches)
+            msg += '<p><b>Groups:</b> ' + stats.groups.added + ' added, ' + stats.groups.updated + ' updated, ' + stats.groups.skipped + ' skipped</p>' +
+                   '<p><b>Searches:</b> ' + stats.jobs.added + ' added, ' + stats.jobs.updated + ' updated, ' + stats.jobs.skipped + ' skipped</p>'
+          if(doAds)
+            msg += '<p><b>Listings:</b> ' + stats.ads.added + ' added, ' + stats.ads.updated + ' updated, ' + stats.ads.skipped + ' skipped</p>'
+          if(doFavorites && stats.favorites)
+            msg += '<p><b>Favorites:</b> ' + stats.favorites.added + ' added, ' + stats.favorites.skipped + ' skipped</p>'
+          if(doDislikes && stats.dislikes)
+            msg += '<p><b>Dislikes:</b> ' + stats.dislikes.added + ' added, ' + stats.dislikes.skipped + ' skipped</p>'
+          if(doHideAmenities && stats.hideAmenities)
+            msg += '<p><b>Hidden amenities:</b> ' + stats.hideAmenities.added + ' added, ' + stats.hideAmenities.skipped + ' skipped</p>'
+          if(doSeen)
+            msg += '<p><b>Seen listings:</b> ' + seenApplied + ' merged into local history</p>'
+          if(!msg) msg = '<p>Nothing was imported.</p>'
+
           renderpage('searches')
           setTimeout(function(){ showAlertModal('Import Complete', msg) }, 400)
         })
