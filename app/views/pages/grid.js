@@ -9,7 +9,7 @@ var _gridListings = []
 var _gridRenderedCount = 0
 var _gridBatchSize = 50
 var _gridScrollTimer = null
-var _currentSort = null
+var _currentSort = { field: 'price', dir: 'asc' }
 
 function getCollapsedRowIds() {
   try { return JSON.parse(localStorage.getItem('collapsedRowIds') || '[]') } catch(e) { return [] }

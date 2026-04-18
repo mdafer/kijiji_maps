@@ -345,7 +345,7 @@ function clearGlobalVars()
 	_favJobIds = []
 	_shapeFilterGeo = null
 	_drawnShape = null
-	_currentSort = null
+	_currentSort = { field: 'price', dir: 'asc' }
 }
 function clearLocalStorage()
 {
@@ -578,7 +578,7 @@ function saveSort() {
 function restoreSort() {
 	var raw = localStorage.getItem('savedSort')
 	if(!raw) return
-	try { _currentSort = JSON.parse(raw) } catch(e) { _currentSort = null }
+	try { _currentSort = JSON.parse(raw) } catch(e) { _currentSort = { field: 'price', dir: 'asc' } }
 }
 
 function saveFavoritesOnly() {
@@ -641,7 +641,7 @@ function applyUrlParamsToFilters() {
 			else el.value = ''
 		})
 		$('#minPhotosCheck').prop('checked', false)
-		_currentSort = null
+		_currentSort = { field: 'price', dir: 'asc' }
 		_favoritesOnly = false
 	}
 	_persistKeys.forEach(function(key) {
