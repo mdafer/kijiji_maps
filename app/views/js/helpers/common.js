@@ -12,14 +12,17 @@ try {
 } catch(e) { localStorage.removeItem('user') }
 
 // Parses a stored amenity list. New format is a JSON-encoded array; legacy
-// format is a comma-separated string. Comma-fallback keeps old saved values
-// readable, but names containing commas are only safe in the JSON format.
+// format is a comma-separated string. The JSON path preserves strings byte-
+// exact because some upstream amenity titles carry meaningful leading/trailing
+// whitespace that must round-trip to match the bubble label. The comma-split
+// fallback trims, since comma-joined legacy values have " " after each comma.
 function parseAmenityList(raw){
 	if(raw == null) return []
-	if(Array.isArray(raw)) return raw.map(function(a){return String(a).trim()}).filter(Boolean)
-	var s = String(raw).trim()
-	if(s.charAt(0) === '['){
-		try { var arr = JSON.parse(s); if(Array.isArray(arr)) return arr.map(function(x){return String(x).trim()}).filter(Boolean) } catch(e) {}
+	if(Array.isArray(raw)) return raw.map(function(a){return String(a)}).filter(Boolean)
+	var s = String(raw)
+	var t = s.trim()
+	if(t.charAt(0) === '['){
+		try { var arr = JSON.parse(t); if(Array.isArray(arr)) return arr.map(function(x){return String(x)}).filter(Boolean) } catch(e) {}
 	}
 	return s.split(',').map(function(x){return x.trim()}).filter(Boolean)
 }

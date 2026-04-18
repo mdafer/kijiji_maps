@@ -4,12 +4,13 @@
 // other special chars) round-trip safely via JSON.
 function parseAmenityList(raw) {
 	if(raw == null) return []
-	if(Array.isArray(raw)) return raw.map(a => String(a).trim()).filter(Boolean)
-	let s = String(raw).trim()
-	if(s.charAt(0) === '[') {
+	if(Array.isArray(raw)) return raw.map(a => String(a)).filter(Boolean)
+	let s = String(raw)
+	let t = s.trim()
+	if(t.charAt(0) === '[') {
 		try {
-			let arr = JSON.parse(s)
-			if(Array.isArray(arr)) return arr.map(a => String(a).trim()).filter(Boolean)
+			let arr = JSON.parse(t)
+			if(Array.isArray(arr)) return arr.map(a => String(a)).filter(Boolean)
 		} catch(e) {}
 	}
 	return s.split(',').map(a => a.trim()).filter(Boolean)

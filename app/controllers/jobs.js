@@ -10,10 +10,11 @@ function jobPlatform(job) { return job.platform || 'kijiji' }
 // legacy comma-separated string. Comma-fallback keeps old DB values readable.
 function parseAmenityList(raw) {
 	if(raw == null) return []
-	if(Array.isArray(raw)) return raw.map(a => String(a).trim()).filter(Boolean)
-	let s = String(raw).trim()
-	if(s.charAt(0) === '[') {
-		try { let arr = JSON.parse(s); if(Array.isArray(arr)) return arr.map(a => String(a).trim()).filter(Boolean) } catch(e) {}
+	if(Array.isArray(raw)) return raw.map(a => String(a)).filter(Boolean)
+	let s = String(raw)
+	let t = s.trim()
+	if(t.charAt(0) === '[') {
+		try { let arr = JSON.parse(t); if(Array.isArray(arr)) return arr.map(a => String(a)).filter(Boolean) } catch(e) {}
 	}
 	return s.split(',').map(a => a.trim()).filter(Boolean)
 }
