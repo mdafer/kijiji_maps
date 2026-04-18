@@ -176,6 +176,7 @@ function toggleProfileHideAmenity(el){
 	var selected = []
 	$('#profileHideAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
 	$('#profileHideAmenities').val(selected.length ? JSON.stringify(selected) : '')
+	updateProfileAmenityBulkLabel()
 }
 
 function filterProfileAmenityBubbles(){
@@ -184,6 +185,31 @@ function filterProfileAmenityBubbles(){
 		var match = !term || $(this).text().toLowerCase().indexOf(term) !== -1
 		$(this).toggle(match)
 	})
+	updateProfileAmenityBulkLabel()
+}
+
+// Shows the bulk-select button when a search term is active and there are
+// visible bubbles. Label flips to "Deselect all matching" once every visible
+// bubble is already active, so the same button also clears the current match.
+function updateProfileAmenityBulkLabel(){
+	var term = ($('#profileAmenitySearch').val() || '').trim()
+	var $visible = $('#profileHideAmenityBubbles .amenity-filter-bubble:visible')
+	if(!term || !$visible.length) { $('#profileAmenityBulkActions').hide(); return }
+	var activeCount = $visible.filter('.active').length
+	var allActive = activeCount === $visible.length
+	$('#profileAmenityBulkLabel').text(allActive ? 'Deselect all matching' : 'Select all matching')
+	$('#profileAmenityBulkActions').show()
+}
+
+function toggleSelectAllVisibleHideAmenities(){
+	var $visible = $('#profileHideAmenityBubbles .amenity-filter-bubble:visible')
+	if(!$visible.length) return
+	var allActive = $visible.filter('.active').length === $visible.length
+	$visible.toggleClass('active', !allActive)
+	var selected = []
+	$('#profileHideAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
+	$('#profileHideAmenities').val(selected.length ? JSON.stringify(selected) : '')
+	updateProfileAmenityBulkLabel()
 }
 
 // Shows a spinner + "Loading…" in the results count element while a fetch

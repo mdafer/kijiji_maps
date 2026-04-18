@@ -312,6 +312,9 @@
                 <label>Hide Amenities <small style="color:#888">(hidden from listings · none selected = show all)</small></label>
                 <input id="profileHideAmenities" name="hideAmenities" type="hidden">
                 <input id="profileAmenitySearch" type="text" class="form-control input-sm" placeholder="Search amenities..." oninput="filterProfileAmenityBubbles()" style="margin-bottom:8px">
+                <div id="profileAmenityBulkActions" style="display:none;margin-bottom:8px">
+                  <button type="button" class="btn btn-default btn-xs" onclick="toggleSelectAllVisibleHideAmenities()"><span id="profileAmenityBulkLabel">Select all matching</span></button>
+                </div>
                 <div id="profileHideAmenityBubbles" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">
                   <small style="color:#999">Open a search first to populate amenities</small>
                 </div>
