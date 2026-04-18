@@ -1,3 +1,20 @@
+// Parses an amenity list passed via query params. Accepts an array, a JSON-
+// encoded array string, or a comma-separated legacy string. Comma-fallback
+// keeps old saved share links working while titles containing commas (or any
+// other special chars) round-trip safely via JSON.
+function parseAmenityList(raw) {
+	if(raw == null) return []
+	if(Array.isArray(raw)) return raw.map(a => String(a).trim()).filter(Boolean)
+	let s = String(raw).trim()
+	if(s.charAt(0) === '[') {
+		try {
+			let arr = JSON.parse(s)
+			if(Array.isArray(arr)) return arr.map(a => String(a).trim()).filter(Boolean)
+		} catch(e) {}
+	}
+	return s.split(',').map(a => a.trim()).filter(Boolean)
+}
+
 module.exports = {
 	formatQuery: function (vars={}, opts={})
 	{
@@ -66,18 +83,16 @@ module.exports = {
 
 		if(vars.amenities)
 		{
-			let amenityList = Array.isArray(vars.amenities) ? vars.amenities : vars.amenities.split(',')
-			amenityList = amenityList.map(a => a.trim()).filter(a => a)
+			let amenityList = parseAmenityList(vars.amenities)
 			if(amenityList.length)
-				myfilter.$and.push({amenities:{$all: amenityList.map(a => new RegExp(a, 'i'))}})
+				myfilter.$and.push({amenities:{$all: amenityList}})
 		}
 
 		if(vars.orAmenities)
 		{
-			let orAmenityList = Array.isArray(vars.orAmenities) ? vars.orAmenities : vars.orAmenities.split(',')
-			orAmenityList = orAmenityList.map(a => a.trim()).filter(a => a)
+			let orAmenityList = parseAmenityList(vars.orAmenities)
 			if(orAmenityList.length)
-				myfilter.$and.push({$or: orAmenityList.map(a => ({amenities: new RegExp(a, 'i')}))})
+				myfilter.$and.push({$or: orAmenityList.map(a => ({amenities: a}))})
 		}
 
 		//{$text: { $search: " house  -female -females -girl -girls -lady -ladies" } }

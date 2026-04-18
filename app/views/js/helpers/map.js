@@ -201,12 +201,23 @@ function isTouchScreen(){
   return 'ontouchstart' in window || navigator.maxTouchPoints || (window.DocumentTouch && document instanceof DocumentTouch)
 }
 
+// Parses a stored amenity list. Format is JSON-encoded array; falls back to
+// comma-split for legacy saved values from before the JSON change.
+function parseAmenityList(raw){
+  if(!raw) return []
+  var s = String(raw).trim()
+  if(s.charAt(0) === '['){
+    try { var arr = JSON.parse(s); if(Array.isArray(arr)) return arr.map(function(x){return String(x).trim()}).filter(Boolean) } catch(e) {}
+  }
+  return s.split(',').map(function(x){return x.trim()}).filter(Boolean)
+}
+
 function updateAmenityBubbles(){
   var andContainer = $('#amenityBubblesAnd')
   var orContainer = $('#amenityBubblesOr')
   if(!andContainer.length && !orContainer.length) return
-  var andSelected = (($('#amenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
-  var orSelected = (($('#orAmenities').val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean))
+  var andSelected = parseAmenityList($('#amenities').val())
+  var orSelected = parseAmenityList($('#orAmenities').val())
   var allSorted = Array.from(_allAmenities).sort()
   var hideList = getHideAmenities()
   var sorted = hideList.length ? allSorted.filter(function(a){ return hideList.indexOf(a) === -1 }) : allSorted
@@ -248,13 +259,12 @@ function moveAmenityFilter(event, el, fromGroup){
   var fromInput = toGroup === 'or' ? '#amenities' : '#orAmenities'
   var toInput = toGroup === 'or' ? '#orAmenities' : '#amenities'
   // Remove from current group
-  var fromList = ($(fromInput).val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-  fromList = fromList.filter(function(a){ return a !== name })
-  $(fromInput).val(fromList.join(','))
+  var fromList = parseAmenityList($(fromInput).val()).filter(function(a){ return a !== name })
+  $(fromInput).val(fromList.length ? JSON.stringify(fromList) : '')
   // Add to target group
-  var toList = ($(toInput).val() || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
+  var toList = parseAmenityList($(toInput).val())
   if(toList.indexOf(name) === -1) toList.push(name)
-  $(toInput).val(toList.join(','))
+  $(toInput).val(toList.length ? JSON.stringify(toList) : '')
   updateAmenityBubbles()
 }
 
@@ -262,8 +272,8 @@ function syncAmenityInputs(){
   var andSelected = [], orSelected = []
   $('#amenityBubblesAnd .amenity-filter-bubble.active').each(function(){ andSelected.push($(this).text()) })
   $('#amenityBubblesOr .amenity-filter-bubble.active').each(function(){ orSelected.push($(this).text()) })
-  $('#amenities').val(andSelected.join(','))
-  $('#orAmenities').val(orSelected.join(','))
+  $('#amenities').val(andSelected.length ? JSON.stringify(andSelected) : '')
+  $('#orAmenities').val(orSelected.length ? JSON.stringify(orSelected) : '')
 }
 
 function getHideAmenities(){
