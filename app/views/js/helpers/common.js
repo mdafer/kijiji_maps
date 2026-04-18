@@ -11,6 +11,19 @@ try {
 	}
 } catch(e) { localStorage.removeItem('user') }
 
+// Parses a stored amenity list. New format is a JSON-encoded array; legacy
+// format is a comma-separated string. Comma-fallback keeps old saved values
+// readable, but names containing commas are only safe in the JSON format.
+function parseAmenityList(raw){
+	if(raw == null) return []
+	if(Array.isArray(raw)) return raw.map(function(a){return String(a).trim()}).filter(Boolean)
+	var s = String(raw).trim()
+	if(s.charAt(0) === '['){
+		try { var arr = JSON.parse(s); if(Array.isArray(arr)) return arr.map(function(x){return String(x).trim()}).filter(Boolean) } catch(e) {}
+	}
+	return s.split(',').map(function(x){return x.trim()}).filter(Boolean)
+}
+
 var urlParams
 var jobs
 var jobId
@@ -122,8 +135,10 @@ $('#profileModal').on('show.bs.modal', function(){
 	APIgetProfile(null, function(user){
 		$('#profileFbEmail').val(user.fbEmail || '')
 		$('#profileFbPassword').val('')
-		var savedHA = (user.hideAmenities || '').split(',').map(function(s){return s.trim()}).filter(Boolean)
-		$('#profileHideAmenities').val(user.hideAmenities || '')
+		var savedHA = parseAmenityList(user.hideAmenities)
+		// Normalize legacy comma-joined values to JSON so unedited saves
+		// round-trip without shattering names that contain commas.
+		$('#profileHideAmenities').val(savedHA.length ? JSON.stringify(savedHA) : '')
 		if(!user.jobs || !user.jobs.length) {
 			bubblesDiv.html('<small style="color:#999">No searches found</small>')
 			return
@@ -160,7 +175,7 @@ function toggleProfileHideAmenity(el){
 	$(el).toggleClass('active')
 	var selected = []
 	$('#profileHideAmenityBubbles .amenity-filter-bubble.active').each(function(){ selected.push($(this).text()) })
-	$('#profileHideAmenities').val(selected.join(','))
+	$('#profileHideAmenities').val(selected.length ? JSON.stringify(selected) : '')
 }
 
 function filterProfileAmenityBubbles(){

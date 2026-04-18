@@ -201,17 +201,6 @@ function isTouchScreen(){
   return 'ontouchstart' in window || navigator.maxTouchPoints || (window.DocumentTouch && document instanceof DocumentTouch)
 }
 
-// Parses a stored amenity list. Format is JSON-encoded array; falls back to
-// comma-split for legacy saved values from before the JSON change.
-function parseAmenityList(raw){
-  if(!raw) return []
-  var s = String(raw).trim()
-  if(s.charAt(0) === '['){
-    try { var arr = JSON.parse(s); if(Array.isArray(arr)) return arr.map(function(x){return String(x).trim()}).filter(Boolean) } catch(e) {}
-  }
-  return s.split(',').map(function(x){return x.trim()}).filter(Boolean)
-}
-
 function updateAmenityBubbles(){
   var andContainer = $('#amenityBubblesAnd')
   var orContainer = $('#amenityBubblesOr')

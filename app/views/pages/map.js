@@ -45,7 +45,7 @@ function mapfunc()
 
   // Load hideAmenities from user account settings
   APIgetProfile(null, function(user){
-    if(user && user.hideAmenities) _savedHideAmenities = user.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean)
+    if(user) _savedHideAmenities = parseAmenityList(user.hideAmenities)
   })
 
   $('#filtersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })

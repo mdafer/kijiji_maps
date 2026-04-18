@@ -6,6 +6,18 @@ uuid = require('uuid-random')
 
 function jobPlatform(job) { return job.platform || 'kijiji' }
 
+// Parses a stored amenity list. Accepts an array, a JSON-encoded array, or a
+// legacy comma-separated string. Comma-fallback keeps old DB values readable.
+function parseAmenityList(raw) {
+	if(raw == null) return []
+	if(Array.isArray(raw)) return raw.map(a => String(a).trim()).filter(Boolean)
+	let s = String(raw).trim()
+	if(s.charAt(0) === '[') {
+		try { let arr = JSON.parse(s); if(Array.isArray(arr)) return arr.map(a => String(a).trim()).filter(Boolean) } catch(e) {}
+	}
+	return s.split(',').map(a => a.trim()).filter(Boolean)
+}
+
 // Picks the oldest-queued job for a (user, platform) and runs it, but only if
 // no other job is currently running for that same platform. Chains to itself
 // after the job completes so queued searches on the same platform process one
@@ -278,7 +290,7 @@ module.exports = {
 			const incomingAds = Array.isArray(payload.ads) ? payload.ads : []
 			const incomingFavorites = Array.isArray(payload.favorites) ? payload.favorites : null
 			const incomingDislikes = Array.isArray(payload.dislikes) ? payload.dislikes : null
-			const incomingHideAmenities = typeof payload.hideAmenities === 'string' ? payload.hideAmenities : null
+			const incomingHideAmenities = (typeof payload.hideAmenities === 'string' || Array.isArray(payload.hideAmenities)) ? payload.hideAmenities : null
 
 			const user = await params.db.get('users').findOne({_id: authUser._id})
 			if(!user) return callback({ status: ApiStatus.USER_NO_LONGER_EXISTS, meta: null })
@@ -377,15 +389,15 @@ module.exports = {
 			}
 
 			if(incomingHideAmenities !== null) {
-				const incomingList = incomingHideAmenities.split(',').map(s => s.trim()).filter(Boolean)
-				const existingList = (user.hideAmenities || '').split(',').map(s => s.trim()).filter(Boolean)
+				const incomingList = parseAmenityList(incomingHideAmenities)
+				const existingList = parseAmenityList(user.hideAmenities)
 				const existingSet = new Set(existingList)
 				incomingList.forEach(a => {
 					if(existingSet.has(a)) stats.hideAmenities.skipped++
 					else stats.hideAmenities.added++
 				})
 				const finalList = override ? Array.from(new Set(incomingList)) : Array.from(new Set([...existingList, ...incomingList]))
-				await params.db.get('users').update({_id: authUser._id}, {$set: {hideAmenities: finalList.join(',')}})
+				await params.db.get('users').update({_id: authUser._id}, {$set: {hideAmenities: JSON.stringify(finalList)}})
 			}
 
 			return callback({status: ApiStatus.SUCCESS, meta: stats})

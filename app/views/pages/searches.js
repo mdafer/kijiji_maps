@@ -821,8 +821,8 @@ function importSearchesFromFile(file) {
     var adCount = Array.isArray(payload.ads) ? payload.ads.length : 0
     var favoriteCount = Array.isArray(payload.favorites) ? payload.favorites.length : 0
     var dislikeCount = Array.isArray(payload.dislikes) ? payload.dislikes.length : 0
-    var hasHideAmenities = typeof payload.hideAmenities === 'string'
-    var hideAmenitiesList = hasHideAmenities ? payload.hideAmenities.split(',').map(function(s){return s.trim()}).filter(Boolean) : []
+    var hasHideAmenities = typeof payload.hideAmenities === 'string' || Array.isArray(payload.hideAmenities)
+    var hideAmenitiesList = hasHideAmenities ? parseAmenityList(payload.hideAmenities) : []
     var seenItems = (payload.seenItems && typeof payload.seenItems === 'object') ? payload.seenItems : null
     var seenJobCount = seenItems ? Object.keys(seenItems).length : 0
     var seenTotal = 0
