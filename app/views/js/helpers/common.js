@@ -532,6 +532,121 @@ function clearSavedSettings() {
 	localStorage.removeItem('savedHideDisliked')
 }
 
+// Reads multi-job IDs from URL params first (for sharable links), falls back
+// to localStorage for state set by viewSelectedSearches before a reload.
+function getMultiJobIds() {
+	try {
+		if(typeof urlParams === 'object' && urlParams && urlParams.jobIds) {
+			var raw = String(urlParams.jobIds)
+			var fromUrl = raw.split(',').map(function(s){return s.trim()}).filter(Boolean)
+			if(fromUrl.length) return fromUrl
+		}
+	} catch(e) {}
+	try {
+		var cached = JSON.parse(localStorage.getItem('multiJobIds') || '[]')
+		return Array.isArray(cached) ? cached : []
+	} catch(e) { return [] }
+}
+
+// Applies URL params onto the filters form / sort / flags so that opening a
+// share link reproduces the sender's view. Call AFTER restoreFilters/restoreSort
+// so URL params take precedence over the viewer's saved state. If the URL
+// carries any share-specific params, the viewer's own filter state is cleared
+// first so the link is authoritative instead of merging with local state.
+function applyUrlParamsToFilters() {
+	if(typeof urlParams !== 'object' || !urlParams) return
+	var shareKeys = _persistKeys.concat(['sort','favoritesOnly','hideDisliked','jobIds'])
+	var isShareLink = shareKeys.some(function(k){ return urlParams[k] != null })
+	if(isShareLink) {
+		_persistKeys.forEach(function(key) {
+			var el = document.getElementById(key)
+			if(!el) return
+			if(el.type === 'checkbox') el.checked = false
+			else el.value = ''
+		})
+		$('#minPhotosCheck').prop('checked', false)
+		_currentSort = null
+		_favoritesOnly = false
+	}
+	_persistKeys.forEach(function(key) {
+		var val = urlParams[key]
+		if(val == null) return
+		var el = document.getElementById(key)
+		if(!el) return
+		if(el.type === 'checkbox') el.checked = !!val
+		else el.value = val
+	})
+	if(urlParams.minPhotos) {
+		$('#minPhotos').val(urlParams.minPhotos)
+		$('#minPhotosCheck').prop('checked', true)
+	}
+	if(urlParams.sort) {
+		var parts = String(urlParams.sort).split(':')
+		if(parts.length === 2 && parts[0] && (parts[1] === 'asc' || parts[1] === 'desc'))
+			_currentSort = { field: parts[0], dir: parts[1] }
+	}
+	if(urlParams.favoritesOnly === '1' || urlParams.favoritesOnly === 'true') _favoritesOnly = true
+	if(urlParams.hideDisliked === '0' || urlParams.hideDisliked === 'false') _hideDisliked = false
+	else if(urlParams.hideDisliked === '1' || urlParams.hideDisliked === 'true') _hideDisliked = true
+}
+
+// Serializes the current filter form + sort + flags into a shareable URL for
+// the given page. Includes jobIds for multi-search views.
+function buildShareUrl(page) {
+	var base = location.href.split('#')[0]
+	var params = {}
+	if(jobId) params.jobId = jobId
+	if(jobName) params.jobName = jobName
+	if(jobId === 'multi') {
+		var ids = getMultiJobIds()
+		if(ids.length) params.jobIds = ids.join(',')
+	}
+	_persistKeys.forEach(function(key) {
+		var el = document.getElementById(key)
+		if(!el) return
+		var val = el.type === 'checkbox' ? (el.checked ? el.value : '') : (el.value || '')
+		if(val !== '' && val != null) params[key] = val
+	})
+	if(typeof _currentSort !== 'undefined' && _currentSort && _currentSort.field && _currentSort.dir)
+		params.sort = _currentSort.field + ':' + _currentSort.dir
+	if(_favoritesOnly) params.favoritesOnly = '1'
+	if(typeof _hideDisliked !== 'undefined' && _hideDisliked === false) params.hideDisliked = '0'
+	var qs = Object.keys(params).map(function(k){
+		return encodeURIComponent(k) + '=' + encodeURIComponent(params[k])
+	}).join('&')
+	return base + '#' + (page || 'grid') + (qs ? '?' + qs : '')
+}
+
+function copyTextToClipboard(text) {
+	if(navigator.clipboard && navigator.clipboard.writeText) {
+		return navigator.clipboard.writeText(text).catch(function(){ return _legacyCopyText(text) })
+	}
+	return Promise.resolve(_legacyCopyText(text))
+}
+
+function _legacyCopyText(text) {
+	var ta = document.createElement('textarea')
+	ta.value = text
+	ta.style.position = 'fixed'
+	ta.style.top = '-1000px'
+	document.body.appendChild(ta)
+	ta.select()
+	try { document.execCommand('copy') } catch(e) {}
+	document.body.removeChild(ta)
+}
+
+function shareCurrentView() {
+	var state = window.currentState
+	var page = (state === 'map' || state === 'grid') ? state : 'grid'
+	var url = buildShareUrl(page)
+	copyTextToClipboard(url).then(function(){
+		var $btn = $('#shareViewBtn')
+		var orig = $btn.html()
+		$btn.html('<i class="fa fa-check"></i> Copied!').addClass('btn-success').removeClass('btn-default')
+		setTimeout(function(){ $btn.html(orig).removeClass('btn-success').addClass('btn-default') }, 1800)
+	})
+}
+
 function hasActiveFilters() {
 	var raw = localStorage.getItem('savedFilters')
 	if(raw) {

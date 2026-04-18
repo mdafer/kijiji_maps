@@ -2,7 +2,7 @@ async function APIgetAds(params, callback=null)
 {
 	// Inject multi-search job IDs if viewing selected searches
 	if(jobId === 'multi') {
-		var multiIds = JSON.parse(localStorage.getItem('multiJobIds') || '[]')
+		var multiIds = getMultiJobIds()
 		if(multiIds.length) {
 			var idsStr = multiIds.join(',')
 			if(typeof params === 'string')

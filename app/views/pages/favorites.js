@@ -21,6 +21,7 @@ function favoritesfunc() {
   $('#pageTitle').text('Favorites')
   $('#map').hide()
   $('#pac-input').hide()
+  $('#shareViewBtn').hide()
 
   $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
 

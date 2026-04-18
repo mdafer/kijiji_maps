@@ -485,10 +485,10 @@ function viewSelectedSearches() {
     renderpage()
     return
   }
-  // Multiple: use jobId=multi and pass IDs via localStorage
+  // Multiple: encode IDs in URL so the link is sharable
   localStorage.setItem('multiJobIds', JSON.stringify(selected))
   var label = selected.length + ' Searches'
-  window.location.hash = 'grid?jobId=multi&jobName=' + encodeURIComponent(label)
+  window.location.hash = 'grid?jobId=multi&jobIds=' + encodeURIComponent(selected.join(',')) + '&jobName=' + encodeURIComponent(label)
   renderpage()
 }
 

@@ -38,24 +38,10 @@ function mapfunc()
 
   // Restore persisted filters first, then let URL params override
   restoreFilters()
-  if(urlParams.fromPrice) $("#fromPrice").val(urlParams.fromPrice)
-  if(urlParams.toPrice) $("#toPrice").val(urlParams.toPrice)
-  if(urlParams.fromDate) $("#fromDate").val(urlParams.fromDate)
-  if(urlParams.searchText) $("#searchText").val(urlParams.searchText)
-  if(urlParams.minBedrooms) $("#minBedrooms").val(urlParams.minBedrooms)
-  if(urlParams.minBathrooms) $("#minBathrooms").val(urlParams.minBathrooms)
-  if(urlParams.minBeds) $("#minBeds").val(urlParams.minBeds)
-  if(urlParams.minPhotos) {
-    $("#minPhotos").val(urlParams.minPhotos)
-    $("#minPhotosCheck").prop('checked', true)
-  }
-  if(urlParams.amenities) $("#amenities").val(urlParams.amenities)
-  if(urlParams.orAmenities) $("#orAmenities").val(urlParams.orAmenities)
-
-  // Restore persisted shape geometry
   restoreShapeGeo()
   restoreFavoritesOnly()
   restoreHideDisliked()
+  applyUrlParamsToFilters()
 
   // Load displayAmenities from user account settings
   APIgetProfile(null, function(user){

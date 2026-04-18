@@ -33,6 +33,8 @@ var toolbarHtml = `
 
       <button id="uncollapseAllBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Expand all rows" onclick="uncollapseAllRows()" style="display:none;margin-left:2px"><i class="fa fa-chevron-down"></i></button>
 
+      <button id="shareViewBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Copy shareable link to this view" onclick="shareCurrentView()" style="margin-left:2px"><i class="fa fa-share-alt"></i> Share</button>
+
       <button id="favFilterBtn" type="button" class="btn btn-default btn-sm BStooltip" title="Show favorites only" onclick="toggleFavoritesFilter()"><i class="fa fa-heart"></i></button>
       <button id="dislikeFilterBtn" type="button" class="btn btn-primary btn-sm BStooltip" title="Show disliked listings (currently hidden)" onclick="toggleHideDislikedFilter()"><i class="fa fa-thumbs-down"></i></button>
 
@@ -330,10 +332,8 @@ function _isJobInCurrentView(adJobId) {
   if(!_socketJobId || !adJobId) return false
   if(_socketJobId === adJobId) return true
   if(_socketJobId === 'multi') {
-    try {
-      var multiIds = JSON.parse(localStorage.getItem('multiJobIds') || '[]')
-      return multiIds.indexOf(adJobId) !== -1
-    } catch(e) { return false }
+    var multiIds = getMultiJobIds()
+    return multiIds.indexOf(adJobId) !== -1
   }
   return false
 }

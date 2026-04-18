@@ -20,9 +20,10 @@ function dislikesfunc() {
   $('#pageTitle').text('Disliked')
   $('#map').hide()
   $('#pac-input').hide()
-  // These toolbar filters don't apply to the dislikes view.
+  // These toolbar controls don't apply to the dislikes view.
   $('#favFilterBtn').hide()
   $('#dislikeFilterBtn').hide()
+  $('#shareViewBtn').hide()
 
   $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
 
