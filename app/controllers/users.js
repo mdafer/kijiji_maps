@@ -36,7 +36,7 @@ module.exports = {
 			user.tokenDate = new Date()
 			delete user.password
 			delete user.fbPasswordEnc
-			user.token = jwt.sign(user, process.env.JWT_SESSION_SECRET,{expiresIn:"30d"})
+			user.token = jwt.sign({_id: user._id, email: user.email, tokenDate: user.tokenDate}, process.env.JWT_SESSION_SECRET,{expiresIn:"30d"})
 			return callback({status: ApiStatus.SUCCESS, msg:'Success', meta:user})
 		}
 		catch(err) {
@@ -54,7 +54,7 @@ module.exports = {
 			user = await params.db.get('users').insert(userObject)
 			user.tokenDate = new Date()
 			delete user.password
-			user.token = jwt.sign(user, process.env.JWT_SESSION_SECRET, { expiresIn: '30d' })
+			user.token = jwt.sign({_id: user._id, email: user.email, tokenDate: user.tokenDate}, process.env.JWT_SESSION_SECRET, { expiresIn: '30d' })
 			user.jobs = [null]
 			callback({status: ApiStatus.SUCCESS, meta: user})
 		}
@@ -78,7 +78,7 @@ module.exports = {
 			delete userObject.password
 			delete userObject.fbPasswordEnc
 			userObject.tokenDate = new Date()
-			userObject.token = jwt.sign(userObject, process.env.JWT_SESSION_SECRET, { expiresIn: '30d' })
+			userObject.token = jwt.sign({_id: userObject._id, email: userObject.email, tokenDate: userObject.tokenDate}, process.env.JWT_SESSION_SECRET, { expiresIn: '30d' })
 			callback({status: ApiStatus.SUCCESS, meta: userObject})
 		}
 		catch(err) {

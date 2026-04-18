@@ -1,3 +1,16 @@
+// Kick out stale bloated JWTs left over from the pre-fix era (when the whole
+// user doc was signed into the token). Oversized tokens inflate every
+// Authorization header and trigger HTTP 431. Force a fresh login so the
+// server can issue a slim token.
+try {
+	var _rawUser = localStorage.getItem('user')
+	if(_rawUser) {
+		var _parsed = JSON.parse(_rawUser)
+		if(_parsed && _parsed.token && _parsed.token.length > 4000)
+			localStorage.removeItem('user')
+	}
+} catch(e) { localStorage.removeItem('user') }
+
 var urlParams
 var jobs
 var jobId
