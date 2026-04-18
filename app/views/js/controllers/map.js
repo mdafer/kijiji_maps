@@ -64,9 +64,8 @@ function initMap(params) {
     })
   }
   //params.forceAllMarkers = true
-  getAdsAsync(params, true)
-
-  $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
+  showResultsLoading('Loading pins...')
+  getListingsAsync(params, true)
 
   localStorage.setItem('hideMarkers', false)
 
@@ -76,23 +75,26 @@ function initMap(params) {
   }
 }
 
-function getAdsAsync(params, centerMapLocation=false)
+function getListingsAsync(params, centerMapLocation=false)
 {
+  showResultsLoading('Loading pins...')
+  showMapLoadingOverlay('Loading pins...')
   //async
-  APIgetAds(params, function(adsResult){
-    if(adsResult.length)
-      lastUpdated = moment(MongoDateFromId(adsResult[adsResult.length-1]._id)).tz("America/Toronto").format("YYYY-MM-DD hh:mm a z")
+  APIgetListings(params, function(listingsResult){
+    if(listingsResult.length)
+      lastUpdated = moment(MongoDateFromId(listingsResult[listingsResult.length-1]._id)).tz("America/Toronto").format("YYYY-MM-DD hh:mm a z")
     else
       lastUpdated = "Unknown"
-    var resultUrls = new Set(adsResult.map(function(ad){ return ad.url }))
+    var resultUrls = new Set(listingsResult.map(function(l){ return l.url }))
     var markerUrls = new Set(_markers.map(function(m){ return m.url }))
     var expiredMarkers = _markers.filter(function(m){ return !resultUrls.has(m.url) })
     if(expiredMarkers.length)
       clearMapMarkers(expiredMarkers)
-    var newAds = adsResult.filter(function(ad){ return !markerUrls.has(ad.url) })
-    if(newAds.length)
-      setMarkersByAds(map, newAds, centerMapLocation)
+    var newListings = listingsResult.filter(function(l){ return !markerUrls.has(l.url) })
+    if(newListings.length)
+      setMarkersByListings(map, newListings, centerMapLocation)
     $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length || 0)
+    hideMapLoadingOverlay()
   });
 }
 
@@ -101,7 +103,7 @@ function hideViewedMarkers()
   //event.preventDefault()
   localStorage.setItem('hideMarkers', true)
   $("#hideViewedbtn").attr("onclick","showViewedMarkers()")
-  $("#hideViewedbtn").attr('data-original-title', "Click to show viewed ads").tooltip('show')
+  $("#hideViewedbtn").attr('data-original-title', "Click to show viewed listings").tooltip('show')
   $("#hideViewedicon").removeClass('fa-eye')
   $("#hideViewedicon").addClass('fa-eye-slash')
   if(!visitedUrls || !visitedUrls.length)
@@ -117,7 +119,7 @@ function showViewedMarkers()
   localStorage.setItem('hideMarkers', false)
   getViewedMarkers().forEach(marker => marker.setMap(map));
   $("#hideViewedbtn").attr("onclick","hideViewedMarkers()")
-  $("#hideViewedbtn").attr('data-original-title', "Click to hide viewed ads").tooltip('show')
+  $("#hideViewedbtn").attr('data-original-title', "Click to hide viewed listings").tooltip('show')
   $("#hideViewedicon").removeClass('fa-eye-slash')
   $("#hideViewedicon").addClass('fa-eye')
   $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length || 0)
@@ -148,7 +150,7 @@ function download(content, fileName, contentType) {
 }
 function saveViewed()
 {
-  download(localStorage.getItem('visitedUrls'+jobId), 'Viewed Ads List for '+jobName+'.txt', 'text/plain')
+  download(localStorage.getItem('visitedUrls'+jobId), 'Viewed Listings List for '+jobName+'.txt', 'text/plain')
 }
 
 function updateViewedList(e) {
@@ -179,8 +181,8 @@ function updateViewedList(e) {
 function rebuildViewedList()
 {
   showConfirmModal(
-    'Re-index Viewed Ads',
-    'Are you sure you want to re-index the viewed ads list for this search?',
+    'Re-index Viewed Listings',
+    'Are you sure you want to re-index the viewed listings list for this search?',
     function() {
       if(!visitedUrls || !visitedUrls.length) return
       let uniqueList = visitedUrls.filter(LocalUrl => {return _markers.some(marker => marker.url == LocalUrl)})
@@ -195,7 +197,7 @@ function resetJob()
   refreshUrlParams()
   var detectedPlatform = urlParams.platform
     || localStorage.getItem('platform')
-    || (_markers.length && _markers[0].adData && _markers[0].adData.platform)
+    || (_markers.length && _markers[0].listingData && _markers[0].listingData.platform)
     || null
   var platformName = (detectedPlatform === 'airbnb') ? 'Airbnb' : (detectedPlatform === 'facebook') ? 'Facebook' : 'Kijiji'
   var isAirbnb = detectedPlatform === 'airbnb'
@@ -260,13 +262,13 @@ function mapClearInformationWindow()
     </div>`
 )}
 
-/*function mapCheckNewAds()
+/*function mapCheckNewListings()
 {
-  let retVal = confirm("This does not remove old ads, it just ads newest one. To reset all results, click the 'Reset All Ads From Kijiji' button.")
+  let retVal = confirm("This does not remove old listings, it just listings newest one. To reset all results, click the 'Reset All Listings From Kijiji' button.")
   if(!retVal)
     return false
   $('#informationModal').modal('show')
-  APIcheckLatestAds('{"jobId":"Denise"}')
+  APIcheckLatestListings('{"jobId":"Denise"}')
   return true
 }*/
 
@@ -452,27 +454,27 @@ function closePhotoZoom()
   $(document).off('keydown.photoZoom')
 }
 
-function openAvailabilityCalendar(adId) {
-  var ad = typeof _gridAds !== 'undefined' ? _gridAds.find(function(a){ return a._id === adId }) : null
-  if(!ad && typeof _markers !== 'undefined') {
-    var m = _markers.find(function(mk){ return mk.adData && mk.adData._id === adId })
-    if(m) ad = m.adData
+function openAvailabilityCalendar(listingId) {
+  var listing = typeof _gridListings !== 'undefined' ? _gridListings.find(function(a){ return a._id === listingId }) : null
+  if(!listing && typeof _markers !== 'undefined') {
+    var m = _markers.find(function(mk){ return mk.listingData && mk.listingData._id === listingId })
+    if(m) listing = m.listingData
   }
-  if(!ad || !ad.availability) {
+  if(!listing || !listing.availability) {
     showAlertModal('Availability Not Found', 'Availability data is not available for this listing. If it\'s an Airbnb listing, try refreshing it to fetch the 12-month calendar.')
     return
   }
-  
-  $('#availabilityTitle').text('12-Month Availability: ' + ad.title)
+
+  $('#availabilityTitle').text('12-Month Availability: ' + listing.title)
   var grid = $('#availabilityCalendarGrid')
   grid.empty()
-  
+
   // Group by month
   var months = {}
-  Object.keys(ad.availability).sort().forEach(function(date) {
+  Object.keys(listing.availability).sort().forEach(function(date) {
     var monthKey = date.substring(0, 7) // YYYY-MM
     if(!months[monthKey]) months[monthKey] = []
-    months[monthKey].push(Object.assign({date: date}, ad.availability[date]))
+    months[monthKey].push(Object.assign({date: date}, listing.availability[date]))
   })
   
   Object.keys(months).forEach(function(mKey) {
@@ -519,7 +521,7 @@ function clearJobCache()
     'Clear Cached Listings',
     'Are you sure you want to clear all cached listings for this search? This will remove them from the database.',
     function() {
-      APIclearJobAds(JSON.stringify({jobId}), function(result){
+      APIclearJobListings(JSON.stringify({jobId}), function(result){
         clearMapMarkers('all')
         _markers = []
         $(".resultscount").html('Last Updated: N/A, Number of results: 0')
@@ -559,7 +561,7 @@ function mapResetViewed()
 {
   showConfirmModal(
     'Clear Viewed History',
-    'Are you sure you want to clear the viewed ads history of this search?',
+    'Are you sure you want to clear the viewed listings history of this search?',
     function() {
       localStorage.removeItem('visitedUrls'+jobId)
       getViewedMarkers().forEach(marker => marker.setIcon("https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png"))

@@ -25,7 +25,7 @@ var _favoriteIds = new Set()
 var _favoritesOnly = false
 var _dislikeIds = new Set()
 var _hideDisliked = true
-var _focusAdId = null
+var _focusListingId = null
 
 // --- Lazy image loading with preload offset ---
 var _lazyImageObserver = null
@@ -171,6 +171,69 @@ function filterProfileAmenityBubbles(){
 	})
 }
 
+// Shows a spinner + "Loading…" in the results count element while a fetch
+// is in flight. Callers overwrite .resultscount on success, so this only
+// needs to paint once before the AJAX starts.
+function showResultsLoading(label) {
+	$('.resultscount').html('<i class="fa fa-spinner fa-spin" style="margin-right:6px"></i>' + (label || 'Loading results...'))
+}
+
+// Renders shimmer skeleton placeholders into the grid container. Mode is
+// 'cards' or 'rows'; defaults to _gridMode. Cleared automatically when the
+// grid re-renders (renderGrid empties #gridContainer).
+function showGridSkeleton(mode, count) {
+	var container = document.getElementById('gridContainer')
+	if(!container) return
+	mode = mode || (typeof _gridMode !== 'undefined' ? _gridMode : 'cards')
+	count = count || 8
+	var html = ''
+	if(mode === 'cards') {
+		html = '<div class="grid-cards">'
+		for(var i = 0; i < count; i++) {
+			html += '<div class="skel-card">' +
+				'<div class="skel-card-img skeleton"></div>' +
+				'<div class="skel-card-body">' +
+					'<div class="skel-line skeleton w-80"></div>' +
+					'<div class="skel-line skeleton w-60"></div>' +
+					'<div class="skel-line skeleton w-40"></div>' +
+				'</div>' +
+			'</div>'
+		}
+		html += '</div>'
+	} else {
+		html = '<div class="grid-rows">'
+		for(var j = 0; j < count; j++) {
+			html += '<div class="skel-row">' +
+				'<div class="skel-row-thumb skeleton"></div>' +
+				'<div class="skel-row-body">' +
+					'<div class="skel-line skeleton w-60"></div>' +
+					'<div class="skel-line skeleton w-80"></div>' +
+					'<div class="skel-line skeleton w-40"></div>' +
+				'</div>' +
+			'</div>'
+		}
+		html += '</div>'
+	}
+	container.innerHTML = html
+}
+
+// Overlays a translucent "Loading pins…" pill on the map. The map div must
+// have position:relative for absolute-positioned children to anchor to it.
+function showMapLoadingOverlay(label) {
+	var mapEl = document.getElementById('map')
+	if(!mapEl) return
+	if($(mapEl).css('position') === 'static') $(mapEl).css('position', 'relative')
+	$('#mapLoadingOverlay').remove()
+	var html = '<div id="mapLoadingOverlay" class="map-loading-overlay">' +
+		'<div class="map-loading-pill"><i class="fa fa-spinner fa-spin"></i>' + (label || 'Loading pins...') + '</div>' +
+	'</div>'
+	$(mapEl).append(html)
+}
+
+function hideMapLoadingOverlay() {
+	$('#mapLoadingOverlay').remove()
+}
+
 // --- Favorites helpers ---
 function loadFavoriteIds() {
 	APIgetProfile(null, function(user){
@@ -178,23 +241,23 @@ function loadFavoriteIds() {
 	})
 }
 
-function isFavorite(adId) {
-	return _favoriteIds.has(adId)
+function isFavorite(listingId) {
+	return _favoriteIds.has(listingId)
 }
 
-function toggleFavorite(adId, callback) {
-	if(isFavorite(adId)) {
-		_favoriteIds.delete(adId)
-		APIremoveFavorite(adId, function(){ if(callback) callback(false) })
+function toggleFavorite(listingId, callback) {
+	if(isFavorite(listingId)) {
+		_favoriteIds.delete(listingId)
+		APIremoveFavorite(listingId, function(){ if(callback) callback(false) })
 	} else {
-		_favoriteIds.add(adId)
-		APIaddFavorite(adId, function(){ if(callback) callback(true) })
+		_favoriteIds.add(listingId)
+		APIaddFavorite(listingId, function(){ if(callback) callback(true) })
 	}
 }
 
 function toggleFavoriteBtn(el) {
-	var adId = $(el).data('adid')
-	toggleFavorite(adId, function(isFav) {
+	var listingId = $(el).data('listingid')
+	toggleFavorite(listingId, function(isFav) {
 		$(el).find('i').css('color', isFav ? '#e74c3c' : '#ccc')
 	})
 }
@@ -206,42 +269,42 @@ function loadDislikeIds() {
 	})
 }
 
-function isDisliked(adId) {
-	return _dislikeIds.has(adId)
+function isDisliked(listingId) {
+	return _dislikeIds.has(listingId)
 }
 
-function toggleDislike(adId, callback) {
-	if(isDisliked(adId)) {
-		_dislikeIds.delete(adId)
-		APIremoveDislike(adId, function(){ if(callback) callback(false) })
+function toggleDislike(listingId, callback) {
+	if(isDisliked(listingId)) {
+		_dislikeIds.delete(listingId)
+		APIremoveDislike(listingId, function(){ if(callback) callback(false) })
 	} else {
-		_dislikeIds.add(adId)
-		APIaddDislike(adId, function(){ if(callback) callback(true) })
+		_dislikeIds.add(listingId)
+		APIaddDislike(listingId, function(){ if(callback) callback(true) })
 	}
 }
 
 function toggleDislikeBtn(el) {
 	var $el = $(el)
-	var adId = $el.data('adid')
-	toggleDislike(adId, function(isDis) {
+	var listingId = $el.data('listingid')
+	toggleDislike(listingId, function(isDis) {
 		$el.find('i').css('color', isDis ? '#34495e' : '#ccc')
 		// Remove from view when: dislike-hide filter is active and user just disliked,
 		// OR user just un-disliked while viewing the dislikes page.
 		var onDislikesPage = window.currentState === 'dislikes'
 		if((_hideDisliked && isDis) || (onDislikesPage && !isDis)) {
 			if(typeof _markers !== 'undefined' && _markers.length) {
-				var m = _markers.find(function(mk){ return mk.adData && mk.adData._id === adId })
+				var m = _markers.find(function(mk){ return mk.listingData && mk.listingData._id === listingId })
 				if(m) {
 					m.setMap(null)
 					if(typeof infowindow !== 'undefined' && infowindow) infowindow.close()
 				}
 			}
-			var $row = $('.grid-card[data-adid="'+adId+'"], .grid-row-item[data-adid="'+adId+'"]')
+			var $row = $('.grid-card[data-listingid="'+listingId+'"], .grid-row-item[data-listingid="'+listingId+'"]')
 			$row.remove()
-			if(typeof _gridAds !== 'undefined') {
-				var idx = _gridAds.findIndex(function(a){ return a._id === adId })
+			if(typeof _gridListings !== 'undefined') {
+				var idx = _gridListings.findIndex(function(a){ return a._id === listingId })
 				if(idx !== -1) {
-					_gridAds.splice(idx, 1)
+					_gridListings.splice(idx, 1)
 					if(typeof _gridRenderedCount !== 'undefined' && _gridRenderedCount > idx) _gridRenderedCount--
 				}
 			}
@@ -278,7 +341,7 @@ function clearGlobalVars()
 	_favoritesOnly = false
 	_dislikeIds = new Set()
 	_hideDisliked = true
-	_focusAdId = null
+	_focusListingId = null
 	_favJobIds = []
 	_shapeFilterGeo = null
 	_drawnShape = null
@@ -701,12 +764,12 @@ function clearAllFilters() {
 	$('.amenity-filter-bubble.active').not('.amenity-display').removeClass('active')
 	if(typeof syncAmenityInputs === 'function') syncAmenityInputs()
 	updateFilterIndicator()
-	if(window.currentState === 'map' && typeof getAdsAsync === 'function')
-		getAdsAsync($('#filtersForm').serialize(), true)
-	else if(window.currentState === 'grid' && typeof loadGridAds === 'function')
-		loadGridAds($('#filtersForm').serialize())
-	else if(typeof getAdsAsync === 'function')
-		getAdsAsync($('#filtersForm').serialize())
+	if(window.currentState === 'map' && typeof getListingsAsync === 'function')
+		getListingsAsync($('#filtersForm').serialize(), true)
+	else if(window.currentState === 'grid' && typeof loadGridListings === 'function')
+		loadGridListings($('#filtersForm').serialize())
+	else if(typeof getListingsAsync === 'function')
+		getListingsAsync($('#filtersForm').serialize())
 }
 
 // --- Shared modal helpers ---

@@ -128,13 +128,13 @@ function APIupdateJob(params, callback=null)
     })
 }
 
-function APIclearJobAds(params, callback=null)
+function APIclearJobListings(params, callback=null)
 {
     $.ajax({
         type: "POST",
         dataType: "json",
         contentType: "application/json",
-        url: apiURL+'clearJobAds',
+        url: apiURL+'clearJobListings',
         data: params,
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
         success: function(data){

@@ -11,7 +11,7 @@ var dislikespage = toolbarHtml + `
 
 var _disJobs = []
 var _disViewMode = 'grid'
-var _disAds = []
+var _disListings = []
 
 function dislikesfunc() {
   _favoritesOnly = false
@@ -35,11 +35,11 @@ function dislikesfunc() {
       var name = $('<span>').text(j.name).html()
       $('#disJobFilters').append(
         '<label style="margin:0;cursor:pointer;font-weight:normal">' +
-        '<input type="checkbox" class="dis-job-check" value="'+j.id+'" data-name="'+name+'" checked onchange="loadDislikedAds()" style="margin-right:3px">' +
+        '<input type="checkbox" class="dis-job-check" value="'+j.id+'" data-name="'+name+'" checked onchange="loadDislikedListings()" style="margin-right:3px">' +
         name + '</label>'
       )
     })
-    loadDislikedAds()
+    loadDislikedListings()
   })
 
   $('#filtersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })
@@ -49,7 +49,7 @@ function dislikesfunc() {
     $('#filtersModal').modal('hide')
     saveFilters()
     updateFilterIndicator()
-    loadDislikedAds()
+    loadDislikedListings()
   })
 }
 
@@ -59,7 +59,7 @@ function getSelectedDisJobIds() {
   return ids
 }
 
-function loadDislikedAds() {
+function loadDislikedListings() {
   var params = {}
 
   var selectedIds = getSelectedDisJobIds()
@@ -84,42 +84,44 @@ function loadDislikedAds() {
   var oam = $('#orAmenities').val()
   if(oam) params.orAmenities = oam
 
-  APIgetDislikedAds(params, function(ads) {
+  showResultsLoading('Loading disliked...')
+  if(_disViewMode !== 'map') showGridSkeleton()
+  APIgetDislikedListings(params, function(listings) {
     var seen = {}
-    ads = ads.filter(function(ad){ if(seen[ad._id]) return false; seen[ad._id] = true; return true })
-    _disAds = ads
+    listings = listings.filter(function(l){ if(seen[l._id]) return false; seen[l._id] = true; return true })
+    _disListings = listings
     _allAmenities = new Set()
     _amenityIdMap = {}
-    ads.forEach(function(ad) {
-      if(ad.amenities && ad.amenities.length)
-        ad.amenities.forEach(function(a){ _allAmenities.add(a) })
-      if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+    listings.forEach(function(l) {
+      if(l.amenities && l.amenities.length)
+        l.amenities.forEach(function(a){ _allAmenities.add(a) })
+      if(l.amenityIdMap) Object.assign(_amenityIdMap, l.amenityIdMap)
     })
     showDislikedView()
   })
 }
 
 function showDislikedView() {
-  var ads = _disAds
+  var listings = _disListings
   if(hasActiveShapeFilter()) {
-    ads = ads.filter(function(ad){ return isInsideShapeFilter(ad.lat, ad.lon) })
+    listings = listings.filter(function(l){ return isInsideShapeFilter(l.lat, l.lon) })
   }
   if(_disViewMode === 'map') {
-    _gridAds = ads
+    _gridListings = listings
     $('#gridContainer').hide()
     $('#pac-input').show()
     $('#map').show()
-    showDislikedMap(ads)
+    showDislikedMap(listings)
   } else {
     $('#map').hide()
     $('#pac-input').hide()
     $('#gridContainer').show()
-    _gridAds = ads
+    _gridListings = listings
     renderGrid()
   }
 }
 
-function showDislikedMap(ads) {
+function showDislikedMap(listings) {
   googleMapsReady.then(function() {
     var mapDiv = document.getElementById('map')
     if(!map) {
@@ -156,10 +158,10 @@ function showDislikedMap(ads) {
 
     visitedUrls = visitedUrls || []
     clearMapMarkers('all')
-    if(ads.length) {
-      setMarkersByAds(map, ads, true)
+    if(listings.length) {
+      setMarkersByListings(map, listings, true)
     }
-    var countText = 'Results: ' + ads.length + ' (disliked)'
+    var countText = 'Results: ' + listings.length + ' (disliked)'
     if(hasActiveShapeFilter()) countText += ' (area filtered)'
     $('.resultscount').text(countText)
 

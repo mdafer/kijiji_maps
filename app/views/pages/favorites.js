@@ -11,7 +11,7 @@ var favoritespage = toolbarHtml + `
 
 var _favJobs = [] // all user jobs, populated on favorites page load
 var _favViewMode = 'grid' // 'grid' or 'map' within favorites page
-var _favAds = [] // raw ads from last fetch, before shape filter
+var _favListings = [] // raw listings from last fetch, before shape filter
 
 function favoritesfunc() {
   _favoritesOnly = true
@@ -34,11 +34,11 @@ function favoritesfunc() {
       var name = $('<span>').text(j.name).html()
       $('#favJobFilters').append(
         '<label style="margin:0;cursor:pointer;font-weight:normal">' +
-        '<input type="checkbox" class="fav-job-check" value="'+j.id+'" data-name="'+name+'" checked onchange="loadFavAds()" style="margin-right:3px">' +
+        '<input type="checkbox" class="fav-job-check" value="'+j.id+'" data-name="'+name+'" checked onchange="loadFavListings()" style="margin-right:3px">' +
         name + '</label>'
       )
     })
-    loadFavAds()
+    loadFavListings()
   })
 
   $('#filtersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })
@@ -48,7 +48,7 @@ function favoritesfunc() {
     $('#filtersModal').modal('hide')
     saveFilters()
     updateFilterIndicator()
-    loadFavAds()
+    loadFavListings()
   })
 }
 
@@ -58,7 +58,7 @@ function getSelectedFavJobIds() {
   return ids
 }
 
-function loadFavAds() {
+function loadFavListings() {
   var params = {}
 
   var selectedIds = getSelectedFavJobIds()
@@ -83,42 +83,44 @@ function loadFavAds() {
   var oam = $('#orAmenities').val()
   if(oam) params.orAmenities = oam
 
-  APIgetFavorites(params, function(ads) {
+  showResultsLoading('Loading favorites...')
+  if(_favViewMode !== 'map') showGridSkeleton()
+  APIgetFavorites(params, function(listings) {
     var seen = {}
-    ads = ads.filter(function(ad){ if(seen[ad._id]) return false; seen[ad._id] = true; return true })
-    _favAds = ads
+    listings = listings.filter(function(l){ if(seen[l._id]) return false; seen[l._id] = true; return true })
+    _favListings = listings
     _allAmenities = new Set()
     _amenityIdMap = {}
-    ads.forEach(function(ad) {
-      if(ad.amenities && ad.amenities.length)
-        ad.amenities.forEach(function(a){ _allAmenities.add(a) })
-      if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+    listings.forEach(function(l) {
+      if(l.amenities && l.amenities.length)
+        l.amenities.forEach(function(a){ _allAmenities.add(a) })
+      if(l.amenityIdMap) Object.assign(_amenityIdMap, l.amenityIdMap)
     })
     showFavView()
   })
 }
 
 function showFavView() {
-  var ads = _favAds
+  var listings = _favListings
   if(hasActiveShapeFilter()) {
-    ads = ads.filter(function(ad){ return isInsideShapeFilter(ad.lat, ad.lon) })
+    listings = listings.filter(function(l){ return isInsideShapeFilter(l.lat, l.lon) })
   }
   if(_favViewMode === 'map') {
-    _gridAds = ads
+    _gridListings = listings
     $('#gridContainer').hide()
     $('#pac-input').show()
     $('#map').show()
-    showFavMap(ads)
+    showFavMap(listings)
   } else {
     $('#map').hide()
     $('#pac-input').hide()
     $('#gridContainer').show()
-    _gridAds = ads
+    _gridListings = listings
     renderGrid()
   }
 }
 
-function showFavMap(ads) {
+function showFavMap(listings) {
   googleMapsReady.then(function() {
     // Reuse existing map or create new one
     var mapDiv = document.getElementById('map')
@@ -159,10 +161,10 @@ function showFavMap(ads) {
     // Clear old markers and set new ones from favorites
     visitedUrls = visitedUrls || []
     clearMapMarkers('all')
-    if(ads.length) {
-      setMarkersByAds(map, ads, true)
+    if(listings.length) {
+      setMarkersByListings(map, listings, true)
     }
-    var countText = 'Results: ' + ads.length + ' (favorites)'
+    var countText = 'Results: ' + listings.length + ' (favorites)'
     if(hasActiveShapeFilter()) countText += ' (area filtered)'
     $('.resultscount').text(countText)
 

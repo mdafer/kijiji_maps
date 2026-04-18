@@ -1,4 +1,4 @@
-async function APIgetAds(params, callback=null)
+async function APIgetListings(params, callback=null)
 {
 	// Inject multi-search job IDs if viewing selected searches
 	if(jobId === 'multi') {
@@ -40,6 +40,8 @@ async function APIgetAds(params, callback=null)
 			    callback(data.meta);
 	    },
 	    error: function (err) {
+	    	$('.resultscount').text('Failed to load results')
+	    	if(typeof hideMapLoadingOverlay === 'function') hideMapLoadingOverlay()
 	    	alert(err.responseJSON.msg);
             if(clearStorageErrorCodes.includes(err.responseJSON.status))
             {
@@ -51,15 +53,15 @@ async function APIgetAds(params, callback=null)
 	});
 }
 
-function APIcheckLatestAds(params, callback=null)
+function APIcheckLatestListings(params, callback=null)
 {
-	$.ajax({ 
+	$.ajax({
         type: "POST",
         dataType: "json",
         contentType: "application/json",
         /*processData: false,
         contentType: false,*/
-        url: apiURL+'checkLatestAds',
+        url: apiURL+'checkLatestListings',
         data: params,
         beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token);},
         success: function(data){

@@ -5,7 +5,7 @@ var gridpage = toolbarHtml + `
 `;
 
 var _gridMode = 'cards'
-var _gridAds = []
+var _gridListings = []
 var _gridRenderedCount = 0
 var _gridBatchSize = 50
 var _gridScrollTimer = null
@@ -14,13 +14,13 @@ var _currentSort = null
 function getCollapsedRowIds() {
   try { return JSON.parse(localStorage.getItem('collapsedRowIds') || '[]') } catch(e) { return [] }
 }
-function isRowCollapsed(adId) {
-  return getCollapsedRowIds().indexOf(adId) !== -1
+function isRowCollapsed(listingId) {
+  return getCollapsedRowIds().indexOf(listingId) !== -1
 }
-function setRowCollapsed(adId, collapsed) {
+function setRowCollapsed(listingId, collapsed) {
   var ids = getCollapsedRowIds()
-  var idx = ids.indexOf(adId)
-  if(collapsed && idx === -1) ids.push(adId)
+  var idx = ids.indexOf(listingId)
+  if(collapsed && idx === -1) ids.push(listingId)
   else if(!collapsed && idx !== -1) ids.splice(idx, 1)
   localStorage.setItem('collapsedRowIds', JSON.stringify(ids))
 }
@@ -62,11 +62,11 @@ function gridfunc() {
     $('#filtersModal').modal('hide')
     saveFilters()
     updateFilterIndicator()
-    loadGridAds($('#filtersForm').serialize())
+    loadGridListings($('#filtersForm').serialize())
   })
 
   setupSocketListeners()
-  loadGridAds($('#filtersForm').serialize())
+  loadGridListings($('#filtersForm').serialize())
 }
 
 function gridUnload() {
@@ -77,30 +77,32 @@ function gridUnload() {
   if(_gridScrollTimer) { clearTimeout(_gridScrollTimer); _gridScrollTimer = null }
 }
 
-function loadGridAds(params) {
-  APIgetAds(params, function(ads) {
+function loadGridListings(params) {
+  showResultsLoading('Loading listings...')
+  showGridSkeleton()
+  APIgetListings(params, function(listings) {
     // Apply shape filter if active
     if(hasActiveShapeFilter()) {
-      ads = ads.filter(function(ad){ return isInsideShapeFilter(ad.lat, ad.lon) })
+      listings = listings.filter(function(l){ return isInsideShapeFilter(l.lat, l.lon) })
     }
-    _gridAds = ads
+    _gridListings = listings
     _allAmenities = new Set()
     _amenityIdMap = {}
-    ads.forEach(function(ad) {
-      if(ad.amenities && ad.amenities.length)
-        ad.amenities.forEach(function(a){ _allAmenities.add(a) })
-      if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+    listings.forEach(function(l) {
+      if(l.amenities && l.amenities.length)
+        l.amenities.forEach(function(a){ _allAmenities.add(a) })
+      if(l.amenityIdMap) Object.assign(_amenityIdMap, l.amenityIdMap)
     })
     if(_currentSort) _applySort()
     renderGrid()
-    if(_focusAdId) scrollToFocusedAd()
+    if(_focusListingId) scrollToFocusedListing()
   })
 }
 
 function _applySort() {
   if(!_currentSort) return
   var field = _currentSort.field, dir = _currentSort.dir
-  _gridAds.sort(function(a, b) {
+  _gridListings.sort(function(a, b) {
     var va, vb
     if(field === 'price') {
       va = parseFloat(a.price) || 0
@@ -139,25 +141,25 @@ function setGridMode(mode) {
   renderGrid()
 }
 
-function appendGridAd(ad) {
-  if(!ad || !ad._id) return
-  for(var i = 0; i < _gridAds.length; i++) {
-    if(_gridAds[i]._id === ad._id) return
+function appendGridListing(listing) {
+  if(!listing || !listing._id) return
+  for(var i = 0; i < _gridListings.length; i++) {
+    if(_gridListings[i]._id === listing._id) return
   }
-  if(hasActiveShapeFilter() && !isInsideShapeFilter(ad.lat, ad.lon)) return
-  if(_favoritesOnly && !isFavorite(ad._id)) return
-  if(_hideDisliked && isDisliked(ad._id)) return
+  if(hasActiveShapeFilter() && !isInsideShapeFilter(listing.lat, listing.lon)) return
+  if(_favoritesOnly && !isFavorite(listing._id)) return
+  if(_hideDisliked && isDisliked(listing._id)) return
 
-  _gridAds.push(ad)
-  if(ad.amenities && ad.amenities.length)
-    ad.amenities.forEach(function(a){ _allAmenities.add(a) })
-  if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+  _gridListings.push(listing)
+  if(listing.amenities && listing.amenities.length)
+    listing.amenities.forEach(function(a){ _allAmenities.add(a) })
+  if(listing.amenityIdMap) Object.assign(_amenityIdMap, listing.amenityIdMap)
 
   var inner = document.getElementById('gridInner')
   // Only append to DOM if infinite-scroll is fully caught up; otherwise the
-  // next scroll batch will render it naturally from _gridAds.
-  if(inner && _gridRenderedCount === _gridAds.length - 1) {
-    var html = _gridMode === 'cards' ? buildCardHtml(ad) : buildRowHtml(ad)
+  // next scroll batch will render it naturally from _gridListings.
+  if(inner && _gridRenderedCount === _gridListings.length - 1) {
+    var html = _gridMode === 'cards' ? buildCardHtml(listing) : buildRowHtml(listing)
     var tmp = document.createElement('div')
     tmp.innerHTML = html
     var node = tmp.firstChild
@@ -168,10 +170,10 @@ function appendGridAd(ad) {
     }
   }
 
-  var base = 'Results: ' + _gridAds.length
+  var base = 'Results: ' + _gridListings.length
   if(_favoritesOnly) base += ' (favorites)'
   if(hasActiveShapeFilter()) base += ' (area filtered)'
-  if(_gridRenderedCount < _gridAds.length)
+  if(_gridRenderedCount < _gridListings.length)
     $('.resultscount').text(base + ' (showing ' + _gridRenderedCount + ')')
   else
     $('.resultscount').text(base)
@@ -181,7 +183,7 @@ function renderGrid() {
   var container = $('#gridContainer')
   container.empty()
   _gridRenderedCount = 0
-  var countText = 'Results: ' + _gridAds.length
+  var countText = 'Results: ' + _gridListings.length
   if(_favoritesOnly) countText += ' (favorites)'
   if(hasActiveShapeFilter()) countText += ' (area filtered)'
   $('.resultscount').text(countText)
@@ -197,7 +199,7 @@ function renderGrid() {
 }
 
 function onGridScroll() {
-  if(_gridRenderedCount >= _gridAds.length) return
+  if(_gridRenderedCount >= _gridListings.length) return
   if(_gridScrollTimer) return
   _gridScrollTimer = setTimeout(function(){
     _gridScrollTimer = null
@@ -212,43 +214,43 @@ function onGridScroll() {
 function renderGridBatch() {
   var inner = document.getElementById('gridInner')
   if(!inner) return
-  var end = Math.min(_gridRenderedCount + _gridBatchSize, _gridAds.length)
+  var end = Math.min(_gridRenderedCount + _gridBatchSize, _gridListings.length)
   var frag = document.createDocumentFragment()
   var tmp = document.createElement('div')
   var html = ''
   for(var i = _gridRenderedCount; i < end; i++) {
-    html += _gridMode === 'cards' ? buildCardHtml(_gridAds[i]) : buildRowHtml(_gridAds[i])
+    html += _gridMode === 'cards' ? buildCardHtml(_gridListings[i]) : buildRowHtml(_gridListings[i])
   }
   tmp.innerHTML = html
   while(tmp.firstChild) frag.appendChild(tmp.firstChild)
   inner.appendChild(frag)
   observeLazyImages(inner)
   _gridRenderedCount = end
-  var base = 'Results: ' + _gridAds.length
+  var base = 'Results: ' + _gridListings.length
   if(_favoritesOnly) base += ' (favorites)'
   if(hasActiveShapeFilter()) base += ' (area filtered)'
-  if(_gridRenderedCount < _gridAds.length)
+  if(_gridRenderedCount < _gridListings.length)
     $('.resultscount').text(base + ' (showing ' + _gridRenderedCount + ')')
   else
     $('.resultscount').text(base)
 }
 
-function buildCardHtml(ad) {
-  var img = ad.picture_url || ''
+function buildCardHtml(listing) {
+  var img = listing.picture_url || ''
   var imgHtml = img ? '<img class="grid-card-img" data-src="'+img+'" referrerpolicy="no-referrer">' : '<div class="grid-card-img grid-card-noimg"><i class="fa fa-image"></i></div>'
-  var pics = ad.picture_urls || []
+  var pics = listing.picture_urls || []
   var photoBtnHtml = pics.length > 1
-    ? '<button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))"><i class="fa fa-camera"></i> '+pics.length+'</button>'
+    ? '<button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridListingPhotos(\''+listing._id+'\'))"><i class="fa fa-camera"></i> '+pics.length+'</button>'
     : ''
   var details = []
-  if(ad.bedrooms) details.push(ad.bedrooms + ' bd')
-  if(ad.bathrooms) details.push(ad.bathrooms + ' ba')
-  if(ad.beds) details.push(ad.beds + ' beds')
+  if(listing.bedrooms) details.push(listing.bedrooms + ' bd')
+  if(listing.bathrooms) details.push(listing.bathrooms + ' ba')
+  if(listing.beds) details.push(listing.beds + ' beds')
 
   var amenityHtml = ''
-  if(ad.amenities && ad.amenities.length) {
+  if(listing.amenities && listing.amenities.length) {
     var displayList = getDisplayAmenities()
-    var shownAmenities = displayList.length ? ad.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : ad.amenities
+    var shownAmenities = displayList.length ? listing.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : listing.amenities
     if(shownAmenities.length) {
       amenityHtml = '<div class="grid-card-amenities">'
       shownAmenities.forEach(function(a){ amenityHtml += '<span class="amenity-bubble">'+a+'</span>' })
@@ -256,40 +258,40 @@ function buildCardHtml(ad) {
     }
   }
 
-  var html = '<div class="grid-card" data-adid="'+ad._id+'">'
+  var html = '<div class="grid-card" data-listingid="'+listing._id+'">'
   html += '  <div class="grid-card-img-wrap">'+imgHtml+'</div>'
   html += '  <div class="grid-card-body">'
-  html += '    <div class="grid-card-title" title="'+ad.title+'">'+ad.title+'</div>'
-  html += '    <div class="grid-card-price">$'+ad.price+'</div>'
+  html += '    <div class="grid-card-title" title="'+listing.title+'">'+listing.title+'</div>'
+  html += '    <div class="grid-card-price">$'+listing.price+'</div>'
   html += '    <div class="grid-card-details">'+details.join(' &middot; ')+'</div>'
   html += amenityHtml
-  var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
-  var disColor = isDisliked(ad._id) ? '#34495e' : '#ccc'
+  var favColor = isFavorite(listing._id) ? '#e74c3c' : '#ccc'
+  var disColor = isDisliked(listing._id) ? '#34495e' : '#ccc'
   html += '    <div class="grid-card-actions">'
-  html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
-  html += '      <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
+  html += '      <button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '      <button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   html += '      '+photoBtnHtml
-  if(ad.platform === 'airbnb') {
-    if(ad.availability) html += '      <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i></button>'
+  if(listing.platform === 'airbnb') {
+    if(listing.availability) html += '      <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+listing._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i></button>'
     else html += '      <button class="btn btn-xs btn-default" style="opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i></button>'
   }
-  if(ad.lat && ad.lon) html += '      <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
-  html += '      <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank" title="Open Airbnb listing"><i class="fa fa-external-link"></i></a>'
+  if(listing.lat && listing.lon) html += '      <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+listing.lat+','+listing.lon+',\''+listing.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
+  html += '      <a class="btn btn-xs btn-success" href="'+listing.url+'" target="_blank" title="Open Airbnb listing"><i class="fa fa-external-link"></i></a>'
   html += '    </div>'
   html += '  </div>'
   html += '</div>'
   return html
 }
 
-function buildRowHtml(ad) {
+function buildRowHtml(listing) {
   var details = []
-  if(ad.bedrooms) details.push(ad.bedrooms + ' bd')
-  if(ad.bathrooms) details.push(ad.bathrooms + ' ba')
-  if(ad.beds) details.push(ad.beds + ' beds')
+  if(listing.bedrooms) details.push(listing.bedrooms + ' bd')
+  if(listing.bathrooms) details.push(listing.bathrooms + ' ba')
+  if(listing.beds) details.push(listing.beds + ' beds')
 
-  var pics = ad.picture_urls || []
-  if(!pics.length && ad.picture_url) pics = [ad.picture_url]
-  var cats = groupPhotoCategories(ad.photo_categories)
+  var pics = listing.picture_urls || []
+  if(!pics.length && listing.picture_url) pics = [listing.picture_url]
+  var cats = groupPhotoCategories(listing.photo_categories)
 
   var imagesHtml = ''
   if(cats && Object.keys(cats).length) {
@@ -335,9 +337,9 @@ function buildRowHtml(ad) {
   }
 
   var amenityHtml = ''
-  if(ad.amenities && ad.amenities.length) {
+  if(listing.amenities && listing.amenities.length) {
     var displayList = getDisplayAmenities()
-    var shownAmenities = displayList.length ? ad.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : ad.amenities
+    var shownAmenities = displayList.length ? listing.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : listing.amenities
     if(shownAmenities.length) {
       amenityHtml = '<span class="grid-row-amenities">'
       shownAmenities.forEach(function(a){ amenityHtml += '<span class="amenity-bubble">'+a+'</span>' })
@@ -345,26 +347,26 @@ function buildRowHtml(ad) {
     }
   }
 
-  var collapsedClass = isRowCollapsed(ad._id) ? ' collapsed' : ''
-  var html = '<div class="grid-row-item'+collapsedClass+'" data-adid="'+ad._id+'">'
+  var collapsedClass = isRowCollapsed(listing._id) ? ' collapsed' : ''
+  var html = '<div class="grid-row-item'+collapsedClass+'" data-listingid="'+listing._id+'">'
   html += '  <div class="grid-row-header">'
   html += '    <button class="grid-row-collapse-btn" onclick="toggleRowCollapse(this)" title="Collapse/expand"><i class="fa fa-chevron-up"></i></button>'
-  html += '    <span class="grid-row-title" title="'+ad.title+'">'+ad.title+'</span>'
-  html += '    <span class="grid-row-price">$'+ad.price+'</span>'
+  html += '    <span class="grid-row-title" title="'+listing.title+'">'+listing.title+'</span>'
+  html += '    <span class="grid-row-price">$'+listing.price+'</span>'
   html += '    <span class="grid-row-details">'+details.join(' &middot; ')+'</span>'
-  var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
-  var disColor = isDisliked(ad._id) ? '#34495e' : '#ccc'
+  var favColor = isFavorite(listing._id) ? '#e74c3c' : '#ccc'
+  var disColor = isDisliked(listing._id) ? '#34495e' : '#ccc'
   html += '    '+amenityHtml
-  html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
-  html += '    <button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike" style="margin-left:4px"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
-  var totalPics = (ad.picture_urls && ad.picture_urls.length) || (ad.picture_url ? 1 : 0)
-  if(totalPics > 0) html += '    <button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridAdPhotos(\''+ad._id+'\'))" title="Photo slideshow" style="margin-left:4px"><i class="fa fa-camera"></i> '+totalPics+'</button>'
-  if(ad.platform === 'airbnb') {
-    if(ad.availability) html += '    <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+ad._id+'\')" title="Show 12-month availability" style="margin-left:4px"><i class="fa fa-calendar"></i> Availability</button>'
+  html += '    <button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '    <button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike" style="margin-left:4px"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
+  var totalPics = (listing.picture_urls && listing.picture_urls.length) || (listing.picture_url ? 1 : 0)
+  if(totalPics > 0) html += '    <button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridListingPhotos(\''+listing._id+'\'))" title="Photo slideshow" style="margin-left:4px"><i class="fa fa-camera"></i> '+totalPics+'</button>'
+  if(listing.platform === 'airbnb') {
+    if(listing.availability) html += '    <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+listing._id+'\')" title="Show 12-month availability" style="margin-left:4px"><i class="fa fa-calendar"></i> Availability</button>'
     else html += '    <button class="btn btn-xs btn-default" style="margin-left:4px;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
   }
-  if(ad.lat && ad.lon) html += '    <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+ad.lat+','+ad.lon+',\''+ad.title.replace(/'/g,"\\'")+'\')})" title="Show on map" style="margin-left:4px"><i class="fa fa-map-marker"></i> Map</button>'
-  html += '    <a class="btn btn-xs btn-success" href="'+ad.url+'" target="_blank" style="margin-left:4px"><i class="fa fa-external-link"></i> Airbnb</a>'
+  if(listing.lat && listing.lon) html += '    <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+listing.lat+','+listing.lon+',\''+listing.title.replace(/'/g,"\\'")+'\')})" title="Show on map" style="margin-left:4px"><i class="fa fa-map-marker"></i> Map</button>'
+  html += '    <a class="btn btn-xs btn-success" href="'+listing.url+'" target="_blank" style="margin-left:4px"><i class="fa fa-external-link"></i> Airbnb</a>'
   html += '  </div>'
   html += '  <div class="grid-row-body">'+imagesHtml+'</div>'
   html += '</div>'
@@ -375,7 +377,7 @@ function toggleRowCollapse(btn) {
   var $item = $(btn).closest('.grid-row-item')
   var isCollapsing = !$item.hasClass('collapsed')
   $item.toggleClass('collapsed')
-  setRowCollapsed($item.data('adid'), isCollapsing)
+  setRowCollapsed($item.data('listingid'), isCollapsing)
   if(isCollapsing) {
     // Scroll so the listing header is at the top of the viewport
     var $cw = $('.content-wrapper')
@@ -391,10 +393,10 @@ function uncollapseAllRows() {
   $('.grid-row-item.collapsed').removeClass('collapsed')
 }
 
-function gridAdPhotos(adId) {
-  var ad = _gridAds.find(function(a){ return a._id === adId })
-  var urls = (ad && ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad && ad.picture_url ? [ad.picture_url] : [])
-  var cats = (ad && ad.photo_categories) ? groupPhotoCategories(ad.photo_categories) : null
+function gridListingPhotos(listingId) {
+  var listing = _gridListings.find(function(a){ return a._id === listingId })
+  var urls = (listing && listing.picture_urls && listing.picture_urls.length) ? listing.picture_urls : (listing && listing.picture_url ? [listing.picture_url] : [])
+  var cats = (listing && listing.photo_categories) ? groupPhotoCategories(listing.photo_categories) : null
   return {urls: urls, categories: cats}
 }
 

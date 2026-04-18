@@ -8,18 +8,18 @@ var toolbarHtml = `
 
       <input type="file" style="display:none" id="importViewedbtn">
       <div class="btn-group">
-        <button id="hideViewedbtn" type="button" class="btn btn-default btn-sm BStooltip" rel="tooltip" data-placement="top" title="Click to hide viewed ads" onclick="hideViewedMarkers()"><i id="hideViewedicon" class="fa fa-eye"></i></button>
+        <button id="hideViewedbtn" type="button" class="btn btn-default btn-sm BStooltip" rel="tooltip" data-placement="top" title="Click to hide viewed listings" onclick="hideViewedMarkers()"><i id="hideViewedicon" class="fa fa-eye"></i></button>
         <div class="btn-group">
-          <button type="button" style="height:30px" class="btn btn-default btn-sm dropdown-toggle BStooltip" data-placement="top" title="Viewed ads settings" data-toggle="dropdown" aria-expanded="true">
+          <button type="button" style="height:30px" class="btn btn-default btn-sm dropdown-toggle BStooltip" data-placement="top" title="Viewed listings settings" data-toggle="dropdown" aria-expanded="true">
             <span class="caret"></span>
             <span class="sr-only">Toggle Dropdown</span>
           </button>
           <ul class="dropdown-menu" style="margin-left: -62px; width: 180px;" role="menu">
             <div class="col-xs-12 text-center" style="padding:0">
-              <button type="button" class="btn btn-warning BStooltip" rel="tooltip" data-placement="top" title="Save viewed ads to file" onclick="saveViewed()"><i class="glyphicon glyphicon-save"></i></button>
-              <button type="button" class="btn btn-info BStooltip" rel="tooltip" data-placement="top" title="Load viewed ads from file" onclick="document.getElementById('importViewedbtn').click();"><i class="glyphicon glyphicon-import"></i></button>
-              <button type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Rebuild viewed ads indexes" onclick="rebuildViewedList()"><i class="glyphicon glyphicon-flash"></i></button>
-              <button type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Clear viewed ads history" onclick="mapResetViewed()"><i class="fa fa-trash-o"></i></button>
+              <button type="button" class="btn btn-warning BStooltip" rel="tooltip" data-placement="top" title="Save viewed listings to file" onclick="saveViewed()"><i class="glyphicon glyphicon-save"></i></button>
+              <button type="button" class="btn btn-info BStooltip" rel="tooltip" data-placement="top" title="Load viewed listings from file" onclick="document.getElementById('importViewedbtn').click();"><i class="glyphicon glyphicon-import"></i></button>
+              <button type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Rebuild viewed listings indexes" onclick="rebuildViewedList()"><i class="glyphicon glyphicon-flash"></i></button>
+              <button type="button" class="btn btn-danger BStooltip" rel="tooltip" data-placement="top" title="Clear viewed listings history" onclick="mapResetViewed()"><i class="fa fa-trash-o"></i></button>
             </div>
           </ul>
         </div>
@@ -41,7 +41,7 @@ var toolbarHtml = `
       <button id="filtersBtn" type="button" class="btn btn-primary btn-sm BStooltip" title="Filters & Settings" data-toggle="modal" data-target="#filtersModal"><i class="fa fa-sliders"></i></button>
       <button id="clearFiltersBtn" type="button" class="btn btn-warning btn-sm BStooltip" title="Clear all filters" onclick="clearAllFilters()" style="display:none"><i class="fa fa-times"></i> Clear Filters</button>
 
-      <button type="button" class="btn btn-success btn-sm BStooltip" rel="tooltip" data-placement="top" title="Reset all ads" onclick="resetJob()"><i class="fa fa-refresh"></i></button>
+      <button type="button" class="btn btn-success btn-sm BStooltip" rel="tooltip" data-placement="top" title="Reset all listings" onclick="resetJob()"><i class="fa fa-refresh"></i></button>
       <button type="button" class="btn btn-danger btn-sm BStooltip" rel="tooltip" data-placement="top" title="Clear cached listings" onclick="clearJobCache()"><i class="fa fa-trash"></i></button>
 
       <div class="btn-group" style="margin-left:2px">
@@ -302,8 +302,8 @@ function _handleSocketMessage(obj) {
       break;
       case 'donePageNumber':
         addInfoRow({date:obj.date, print:'Done processing page: '+obj.print})
-        if (obj.params && obj.params.refresh && typeof getAdsAsync === 'function')
-          getAdsAsync($('#filtersForm').serialize())
+        if (obj.params && obj.params.refresh && typeof getListingsAsync === 'function')
+          getListingsAsync($('#filtersForm').serialize())
         if (obj.params && obj.params.startTime) {
            var extraDone = "Elapsed: " + formatElapsed(Date.now() - obj.params.startTime) + " · Total Pages: " + obj.print
            if (obj.params.totalListingsFound !== undefined) extraDone += " · Total Found: " + obj.params.totalListingsFound
@@ -311,44 +311,44 @@ function _handleSocketMessage(obj) {
         }
       break;
       case 'doneProc':
-        if(typeof getAdsAsync === 'function') getAdsAsync($('#filtersForm').serialize())
-        if(typeof loadGridAds === 'function' && window.currentState === 'grid') loadGridAds($('#filtersForm').serialize())
-        var totalFoundMsg = obj.params && obj.params.totalListingsFound !== undefined ? " · Found " + obj.params.totalListingsFound + " ads" : ""
-        addInfoRow({date:obj.date, print:'All ads have been refreshed and expired ads removed! Pages: '+obj.print + totalFoundMsg})
-        $('#informationStatus').text("Ads refreshed! Total pages processed: "+obj.print + totalFoundMsg)
+        if(typeof getListingsAsync === 'function') getListingsAsync($('#filtersForm').serialize())
+        if(typeof loadGridListings === 'function' && window.currentState === 'grid') loadGridListings($('#filtersForm').serialize())
+        var totalFoundMsg = obj.params && obj.params.totalListingsFound !== undefined ? " · Found " + obj.params.totalListingsFound + " listings" : ""
+        addInfoRow({date:obj.date, print:'All listings have been refreshed and expired listings removed! Pages: '+obj.print + totalFoundMsg})
+        $('#informationStatus').text("Listings refreshed! Total pages processed: "+obj.print + totalFoundMsg)
         var totalExtra = ""
         if (obj.params && obj.params.startTime) totalExtra = "Total Time: " + formatElapsed(Date.now() - obj.params.startTime) + " · "
-        $('#informationStatus2').text(totalExtra + "All expired ads have been removed!")
+        $('#informationStatus2').text(totalExtra + "All expired listings have been removed!")
       break;
       case 'removeUrlMarker':
-        addInfoRow({date:obj.date, print:'Removing expired ad!'})
-        if(typeof clearMapMarkers === 'function') clearMapMarkers(getMarkersFromAds(obj.print))
+        addInfoRow({date:obj.date, print:'Removing expired listing!'})
+        if(typeof clearMapMarkers === 'function') clearMapMarkers(getMarkersFromListings(obj.print))
       break;
     }
   }
 }
 
-function _isJobInCurrentView(adJobId) {
-  if(!_socketJobId || !adJobId) return false
-  if(_socketJobId === adJobId) return true
+function _isJobInCurrentView(listingJobId) {
+  if(!_socketJobId || !listingJobId) return false
+  if(_socketJobId === listingJobId) return true
   if(_socketJobId === 'multi') {
     var multiIds = getMultiJobIds()
-    return multiIds.indexOf(adJobId) !== -1
+    return multiIds.indexOf(listingJobId) !== -1
   }
   return false
 }
 
-function _handleNewAd(data) {
-  if(!data || !data.ad || !_isJobInCurrentView(data.jobId)) return
-  var ad = data.ad
-  if(ad.lat == null || ad.lon == null) return
-  if(_hideDisliked && typeof isDisliked === 'function' && isDisliked(ad._id)) return
-  if(typeof _markers !== 'undefined' && _markers.some(function(m){ return m.url === ad.url })) return
-  if(typeof setMarkersByAds === 'function' && typeof map !== 'undefined' && map) {
-    setMarkersByAds(map, [ad], false)
+function _handleNewListing(data) {
+  if(!data || !data.listing || !_isJobInCurrentView(data.jobId)) return
+  var listing = data.listing
+  if(listing.lat == null || listing.lon == null) return
+  if(_hideDisliked && typeof isDisliked === 'function' && isDisliked(listing._id)) return
+  if(typeof _markers !== 'undefined' && _markers.some(function(m){ return m.url === listing.url })) return
+  if(typeof setMarkersByListings === 'function' && typeof map !== 'undefined' && map) {
+    setMarkersByListings(map, [listing], false)
     $('.resultscount').html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
-  } else if(typeof appendGridAd === 'function' && window.currentState === 'grid') {
-    appendGridAd(ad)
+  } else if(typeof appendGridListing === 'function' && window.currentState === 'grid') {
+    appendGridListing(listing)
   }
 }
 
@@ -358,12 +358,12 @@ function setupSocketListeners() {
   if(!jobId) return
   _socketJobId = jobId
   socket.on('all', _handleSocketMessage)
-  socket.on('newAd', _handleNewAd)
+  socket.on('newListing', _handleNewListing)
 }
 
 function teardownSocketListeners() {
   socket.off('all', _handleSocketMessage)
-  socket.off('newAd', _handleNewAd)
+  socket.off('newListing', _handleNewListing)
   _socketJobId = null
 }
 
@@ -408,10 +408,10 @@ function toggleFavoritesFilter() {
   updateFilterIndicator()
   // Reload current view with the filter applied
   var state = window.currentState
-  if(state === 'map' && typeof getAdsAsync === 'function')
-    getAdsAsync($('#filtersForm').serialize(), true)
-  else if(state === 'grid' && typeof loadGridAds === 'function')
-    loadGridAds($('#filtersForm').serialize())
+  if(state === 'map' && typeof getListingsAsync === 'function')
+    getListingsAsync($('#filtersForm').serialize(), true)
+  else if(state === 'grid' && typeof loadGridListings === 'function')
+    loadGridListings($('#filtersForm').serialize())
 }
 
 function toggleHideDislikedFilter() {
@@ -422,12 +422,12 @@ function toggleHideDislikedFilter() {
     .toggleClass('btn-default', !_hideDisliked)
     .attr('title', _hideDisliked ? 'Show disliked listings (currently hidden)' : 'Hide disliked listings (currently shown)')
   var state = window.currentState
-  if(state === 'map' && typeof getAdsAsync === 'function')
-    getAdsAsync($('#filtersForm').serialize(), true)
-  else if(state === 'grid' && typeof loadGridAds === 'function')
-    loadGridAds($('#filtersForm').serialize())
-  else if(state === 'favorites' && typeof loadFavAds === 'function')
-    loadFavAds()
+  if(state === 'map' && typeof getListingsAsync === 'function')
+    getListingsAsync($('#filtersForm').serialize(), true)
+  else if(state === 'grid' && typeof loadGridListings === 'function')
+    loadGridListings($('#filtersForm').serialize())
+  else if(state === 'favorites' && typeof loadFavListings === 'function')
+    loadFavListings()
 }
 
 function setViewMode(mode) {

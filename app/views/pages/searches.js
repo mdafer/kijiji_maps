@@ -757,14 +757,14 @@ function exportSelectedSearches() {
   if(!selected.length) return
   var modalBody =
     '<p>Export ' + selected.length + ' search' + (selected.length > 1 ? 'es' : '') + ' and their groups to a JSON file?</p>' +
-    '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="exportIncludeAdsCb" style="margin-right:5px"> Include scraped listings</label>' +
+    '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="exportIncludeListingsCb" style="margin-right:5px"> Include scraped listings</label>' +
     '<p class="text-muted" style="margin-top:6px;font-size:12px">Listings can be large. Images load from external URLs so they stay working on import.</p>'
   showConfirmModal(
     'Export Searches',
     modalBody,
     function() {
-      var includeAds = $('#exportIncludeAdsCb').is(':checked')
-      APIexportSearches({ jobIds: selected, includeAds: includeAds }, function(payload) {
+      var includeListings = $('#exportIncludeListingsCb').is(':checked')
+      APIexportSearches({ jobIds: selected, includeListings: includeListings }, function(payload) {
         if(!payload) return
         var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
         var url = URL.createObjectURL(blob)
@@ -791,14 +791,14 @@ function importSearchesFromFile(file) {
     catch(err) { showAlertModal('Invalid File', 'This is not a valid JSON export file.'); return }
     var jobCount = Array.isArray(payload.jobs) ? payload.jobs.length : 0
     var groupCount = Array.isArray(payload.searchGroups) ? payload.searchGroups.length : 0
-    var adCount = Array.isArray(payload.ads) ? payload.ads.length : 0
+    var listingCount = Array.isArray(payload.listings) ? payload.listings.length : 0
     if(!jobCount && !groupCount) {
       showAlertModal('Nothing to Import', 'This file contains no searches or groups.')
       return
     }
     var summary = jobCount + ' search' + (jobCount === 1 ? '' : 'es')
     summary += ', ' + groupCount + ' group' + (groupCount === 1 ? '' : 's')
-    if(adCount) summary += ', ' + adCount + ' listing' + (adCount === 1 ? '' : 's')
+    if(listingCount) summary += ', ' + listingCount + ' listing' + (listingCount === 1 ? '' : 's')
     var modalBody =
       '<p>Import ' + summary + '?</p>' +
       '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="importOverrideCb" style="margin-right:5px"> Override existing entries (by ID)</label>' +
@@ -812,7 +812,7 @@ function importSearchesFromFile(file) {
           if(!stats) return
           var msg = '<p><b>Groups:</b> ' + stats.groups.added + ' added, ' + stats.groups.updated + ' updated, ' + stats.groups.skipped + ' skipped</p>' +
                     '<p><b>Searches:</b> ' + stats.jobs.added + ' added, ' + stats.jobs.updated + ' updated, ' + stats.jobs.skipped + ' skipped</p>'
-          if(adCount) msg += '<p><b>Listings:</b> ' + stats.ads.added + ' added, ' + stats.ads.updated + ' updated, ' + stats.ads.skipped + ' skipped</p>'
+          if(listingCount) msg += '<p><b>Listings:</b> ' + stats.listings.added + ' added, ' + stats.listings.updated + ' updated, ' + stats.listings.skipped + ' skipped</p>'
           renderpage('searches')
           setTimeout(function(){ showAlertModal('Import Complete', msg) }, 400)
         })

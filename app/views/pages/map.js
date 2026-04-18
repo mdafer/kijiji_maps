@@ -57,7 +57,7 @@ function mapfunc()
     $('#filtersModal').modal('hide');
     saveFilters()
     updateFilterIndicator()
-    getAdsAsync($('#filtersForm').serialize())
+    getListingsAsync($('#filtersForm').serialize())
   });
 
   setupSocketListeners()

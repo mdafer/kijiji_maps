@@ -127,7 +127,7 @@ app.get('/dislikes', function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.dislikes.getDislikes);
 });
 
-app.get('/dislikedAds', function(req, res, next) {
+app.get('/dislikedListings', function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.dislikes.getDislikedAds);
 });
 
@@ -225,7 +225,7 @@ app.post('/queueJobs', [
 	Helpers.router.finish(req, res, Controllers.jobs.rebuildJob);
 });*/
 
-app.post('/clearJobAds', [
+app.post('/clearJobListings', [
   		check('jobId').exists(),
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.clearJobAds);
@@ -243,13 +243,13 @@ app.post('/importSearches', [
 	Helpers.router.finish(req, res, Controllers.jobs.importSearches);
 });
 
-app.post('/checkLatestAds', [
+app.post('/checkLatestListings', [
   		check('jobId').exists(),
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.checkLatestAds);
 });
 
-app.post('/validateJobAds', [
+app.post('/validateJobListings', [
   		check('jobId').exists(),
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.validateJobAds);

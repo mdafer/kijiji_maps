@@ -12,87 +12,87 @@ var _allAmenities = new Set()
 var _amenityIdMap = {}
 var _savedDisplayAmenities = []
 
-function buildPopupHtml(ad) {
-  var isAirbnb = ad.platform === 'airbnb'
-  var isFacebook = ad.platform === 'facebook'
+function buildPopupHtml(listing) {
+  var isAirbnb = listing.platform === 'airbnb'
+  var isFacebook = listing.platform === 'facebook'
   var visitLabel = isAirbnb ? 'Visit on Airbnb' : isFacebook ? 'Visit on Facebook' : 'Visit on Kijiji'
-  var visitUrl = isFacebook ? 'https://www.facebook.com/marketplace/item/' + ad.facebookId + '/' : ad.url
+  var visitUrl = isFacebook ? 'https://www.facebook.com/marketplace/item/' + listing.facebookId + '/' : listing.url
   var html = '<div style="max-width:220px">'
 
-  if(ad.picture_url)
-    html += '<img src="'+ad.picture_url+'" style="max-width:200px;max-height:150px;border-radius:4px;margin-bottom:5px" referrerpolicy="no-referrer">'
+  if(listing.picture_url)
+    html += '<img src="'+listing.picture_url+'" style="max-width:200px;max-height:150px;border-radius:4px;margin-bottom:5px" referrerpolicy="no-referrer">'
 
-  html += '<h4>'+ad.title+'</h4><h4>$'+ad.price+'</h4>'
+  html += '<h4>'+listing.title+'</h4><h4>$'+listing.price+'</h4>'
 
   if(isAirbnb || isFacebook) {
     var parts = []
-    if(ad.bedrooms) parts.push(ad.bedrooms + ' bd')
-    if(ad.beds) parts.push(ad.beds + ' beds')
-    if(ad.bathrooms) parts.push(ad.bathrooms + ' ba')
+    if(listing.bedrooms) parts.push(listing.bedrooms + ' bd')
+    if(listing.beds) parts.push(listing.beds + ' beds')
+    if(listing.bathrooms) parts.push(listing.bathrooms + ' ba')
     if(parts.length) html += '<p style="margin:2px 0;font-size:12px">'+parts.join(' &middot; ')+'</p>'
 
-    if(ad.categories && ad.categories.length)
-      html += '<p style="margin:2px 0;font-size:11px;color:#666">'+ad.categories.join(', ')+'</p>'
+    if(listing.categories && listing.categories.length)
+      html += '<p style="margin:2px 0;font-size:11px;color:#666">'+listing.categories.join(', ')+'</p>'
 
-    if(ad.amenities && ad.amenities.length) {
+    if(listing.amenities && listing.amenities.length) {
       var displayList = getDisplayAmenities()
-      var amenitiesForPopup = displayList.length ? ad.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : ad.amenities
+      var amenitiesForPopup = displayList.length ? listing.amenities.filter(function(a){ return displayList.indexOf(a) !== -1 }) : listing.amenities
       if(amenitiesForPopup.length) {
         html += '<div style="margin:4px 0;display:flex;flex-wrap:wrap;gap:3px">'
         amenitiesForPopup.forEach(function(a){ html += '<span class="amenity-bubble">'+a+'</span>' })
         html += '</div>'
       }
-      ad.amenities.forEach(function(a){ _allAmenities.add(a) })
-      if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+      listing.amenities.forEach(function(a){ _allAmenities.add(a) })
+      if(listing.amenityIdMap) Object.assign(_amenityIdMap, listing.amenityIdMap)
     }
 
     // Photo gallery — use facebookId or airbnbId as lookup key
-    var adLookupId = ad.airbnbId || ad.facebookId
-    var pics = ad.picture_urls || []
-    if(pics.length > 1 && adLookupId)
-      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getAdPhotosData(\''+adLookupId+'\'))">Photos ('+pics.length+')</button>'
+    var listingLookupId = listing.airbnbId || listing.facebookId
+    var pics = listing.picture_urls || []
+    if(pics.length > 1 && listingLookupId)
+      html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getListingPhotosData(\''+listingLookupId+'\'))">Photos ('+pics.length+')</button>'
 
     if(isAirbnb) {
-      if(ad.availability)
-        html += '<button class="btn btn-xs btn-warning" style="margin:4px 0;width:100%" onclick="openAvailabilityCalendar(\''+ad._id+'\')"><i class="fa fa-calendar"></i> Availability (12m)</button>'
+      if(listing.availability)
+        html += '<button class="btn btn-xs btn-warning" style="margin:4px 0;width:100%" onclick="openAvailabilityCalendar(\''+listing._id+'\')"><i class="fa fa-calendar"></i> Availability (12m)</button>'
       else
         html += '<button class="btn btn-xs btn-default" style="margin:4px 0;width:100%;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
     }
 
-    if(ad.seller)
-      html += '<p style="margin:2px 0;font-size:11px;color:#888">Seller: '+ad.seller+'</p>'
+    if(listing.seller)
+      html += '<p style="margin:2px 0;font-size:11px;color:#888">Seller: '+listing.seller+'</p>'
   }
 
-  var favColor = isFavorite(ad._id) ? '#e74c3c' : '#ccc'
-  var disColor = isDisliked(ad._id) ? '#34495e' : '#ccc'
+  var favColor = isFavorite(listing._id) ? '#e74c3c' : '#ccc'
+  var disColor = isDisliked(listing._id) ? '#34495e' : '#ccc'
   html += '<div style="margin:4px 0;display:flex;gap:6px;align-items:center">'
-  html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
-  html += '<button class="btn btn-xs" data-adid="'+ad._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
-  html += '<a onclick="markAsViewed(null, \''+ad.url+'\')" href="'+visitUrl+'" target="_blank">'+visitLabel+'</a>'
+  html += '<button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '<button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
+  html += '<a onclick="markAsViewed(null, \''+listing.url+'\')" href="'+visitUrl+'" target="_blank">'+visitLabel+'</a>'
   html += '</div>'
-  html += '<button class="btn btn-xs btn-default" style="margin:2px 0;width:100%" onclick="viewInList(\''+ad._id+'\')"><i class="fa fa-list"></i> View in list</button>'
+  html += '<button class="btn btn-xs btn-default" style="margin:2px 0;width:100%" onclick="viewInList(\''+listing._id+'\')"><i class="fa fa-list"></i> View in list</button>'
   html += '</div>'
   return html
 }
 
-function viewInList(adId) {
-  _focusAdId = adId
+function viewInList(listingId) {
+  _focusListingId = listingId
   if(typeof switchToGridMode === 'function') {
     switchToGridMode('rows')
   }
 }
 
-function scrollToFocusedAd() {
-  if(!_focusAdId) return
-  var adId = _focusAdId
-  _focusAdId = null
-  // Ensure the ad's batch is rendered (it may be beyond the current batch)
-  var idx = _gridAds.findIndex(function(a){ return a._id === adId })
+function scrollToFocusedListing() {
+  if(!_focusListingId) return
+  var listingId = _focusListingId
+  _focusListingId = null
+  // Ensure the listing's batch is rendered (it may be beyond the current batch)
+  var idx = _gridListings.findIndex(function(a){ return a._id === listingId })
   if(idx === -1) return
   while(_gridRenderedCount <= idx) {
     renderGridBatch()
   }
-  var $el = $('[data-adid="'+adId+'"]')
+  var $el = $('[data-listingid="'+listingId+'"]')
   if(!$el.length) return
   // Uncollapse if it's a row item that's collapsed
   if($el.hasClass('collapsed')) $el.removeClass('collapsed')
@@ -104,46 +104,46 @@ function scrollToFocusedAd() {
   setTimeout(function(){ $el.css('outline', '') }, 2000)
 }
 
-function getAdById(id) {
-  var m = _markers.find(function(mk){ return mk.adData && (mk.adData.airbnbId === id || mk.adData.facebookId === id) })
-  return m ? m.adData : null
+function getListingById(id) {
+  var m = _markers.find(function(mk){ return mk.listingData && (mk.listingData.airbnbId === id || mk.listingData.facebookId === id) })
+  return m ? m.listingData : null
 }
 
-function getAdPhotosData(id) {
-  var ad = getAdById(id)
-  if(!ad) return {urls: [], categories: null}
-  var urls = (ad.picture_urls && ad.picture_urls.length) ? ad.picture_urls : (ad.picture_url ? [ad.picture_url] : [])
-  return {urls: urls, categories: typeof groupPhotoCategories === 'function' ? groupPhotoCategories(ad.photo_categories) : ad.photo_categories}
+function getListingPhotosData(id) {
+  var listing = getListingById(id)
+  if(!listing) return {urls: [], categories: null}
+  var urls = (listing.picture_urls && listing.picture_urls.length) ? listing.picture_urls : (listing.picture_url ? [listing.picture_url] : [])
+  return {urls: urls, categories: typeof groupPhotoCategories === 'function' ? groupPhotoCategories(listing.photo_categories) : listing.photo_categories}
 }
 
-function setMarkersByAds(map, ads, centerLocation = false) {
-  if(!ads || !ads.length)
+function setMarkersByListings(map, listings, centerLocation = false) {
+  if(!listings || !listings.length)
     return
   if(centerLocation)
-    centerMapLocation(ads[0].lat, ads[0].lon)
+    centerMapLocation(listings[0].lat, listings[0].lon)
   var visitedSet = new Set(visitedUrls)
-  ads.forEach(ad=> {
+  listings.forEach(listing=> {
     let icon ={url:"https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png"}
-    if(visitedSet.has(ad.url))
+    if(visitedSet.has(listing.url))
       icon.url = "https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png"
     var marker = new google.maps.Marker({
-      position: new google.maps.LatLng(ad.lat, ad.lon),
-      icon, map: map, title: ad.address, url: ad.url
+      position: new google.maps.LatLng(listing.lat, listing.lon),
+      icon, map: map, title: listing.address, url: listing.url
     });
-    marker.adData = ad
+    marker.listingData = listing
     _markers.push(marker)
 
-    if(ad.amenities) ad.amenities.forEach(function(a){ _allAmenities.add(a) })
-    if(ad.amenityIdMap) Object.assign(_amenityIdMap, ad.amenityIdMap)
+    if(listing.amenities) listing.amenities.forEach(function(a){ _allAmenities.add(a) })
+    if(listing.amenityIdMap) Object.assign(_amenityIdMap, listing.amenityIdMap)
 
-    bindInfoWindow(marker, map, infowindow, ad)
+    bindInfoWindow(marker, map, infowindow, listing)
   })
   updateAmenityBubbles()
 }
 
-var bindInfoWindow = function(marker, map, infowindow, ad) {
+var bindInfoWindow = function(marker, map, infowindow, listing) {
   google.maps.event.addListener(marker, 'click', function() {
-    infowindow.setContent(buildPopupHtml(ad))
+    infowindow.setContent(buildPopupHtml(listing))
     infowindow.open(map, marker)
     markAsViewed(marker, marker.url)
   })
@@ -175,26 +175,26 @@ function getViewedMarkers(markers=null)
   return markers.filter(function(marker){ return visitedSet.has(marker.url) })
 }
 
-/*function mapCheckNewAds()
+/*function mapCheckNewListings()
 {
-  let retVal = confirm("This does not remove old ads, it just ads newest one. To reset all results, click the 'Reset All Ads From Kijiji' button.")
+  let retVal = confirm("This does not remove old listings, it just listings newest one. To reset all results, click the 'Reset All Listings From Kijiji' button.")
   if(!retVal)
     return false
   $('#informationModal').modal('show')
-  APIcheckLatestAds('{"jobId":"Denise"}')
+  APIcheckLatestListings('{"jobId":"Denise"}')
   return true
 }*/
 
-function getMarkersFromAds(ads)
+function getMarkersFromListings(listings)
 {
-  if(!ads || (Array.isArray(ads) && ads.length==0))
+  if(!listings || (Array.isArray(listings) && listings.length==0))
     return
-  if(!Array.isArray(ads))
-    ads=[ads]
-  if(typeof ads[0] === 'string' || ads[0] instanceof String)
-    ads.forEach((ad,index)=>ads[index]={url:ad})
-  var adUrls = new Set(ads.map(function(ad){ return ad.url }))
-  return _markers.filter(function(marker){ return adUrls.has(marker.url) })
+  if(!Array.isArray(listings))
+    listings=[listings]
+  if(typeof listings[0] === 'string' || listings[0] instanceof String)
+    listings.forEach((l,index)=>listings[index]={url:l})
+  var listingUrls = new Set(listings.map(function(l){ return l.url }))
+  return _markers.filter(function(marker){ return listingUrls.has(marker.url) })
 }
 
 function isTouchScreen(){
@@ -407,9 +407,9 @@ function clearDrawnShape(silent){
   $('#drawAreaBtn').removeClass('btn-primary').addClass('btn-default')
   $('#clearShapeBtn').hide()
   if(silent) return
-  // If on grid view, reload ads without shape filter
-  if(window.currentState === 'grid' && typeof loadGridAds === 'function') {
-    loadGridAds($('#filtersForm').serialize())
+  // If on grid view, reload listings without shape filter
+  if(window.currentState === 'grid' && typeof loadGridListings === 'function') {
+    loadGridListings($('#filtersForm').serialize())
   } else {
     $(".resultscount").html('Last Updated: '+lastUpdated+', Number of results: '+ _markers.length)
   }
