@@ -48,7 +48,7 @@ services:
 
 networks:
   docker-network:
-    driver: bridge
+    external: true
 
 volumes:
   db-data:
