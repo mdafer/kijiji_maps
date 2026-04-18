@@ -14,6 +14,9 @@ var searchespage= `<!-- Content Header (Page header) -->
         <ul id="moveToGroupMenu" class="dropdown-menu"></ul>
       </div>
       <button type="button" class="btn btn-default" onclick="createNewSearchGroup()"><i class="fa fa-folder-open"></i> New Group</button>
+      <button id="exportSearchesBtn" type="button" class="btn btn-default" onclick="exportSelectedSearches()" disabled><i class="fa fa-download"></i> Export</button>
+      <button type="button" class="btn btn-default" onclick="document.getElementById('importSearchesFile').click()"><i class="fa fa-upload"></i> Import</button>
+      <input type="file" id="importSearchesFile" accept="application/json,.json" style="display:none">
       <button type="button" class="btn btn-success" data-toggle="modal" data-target="#newSearchModal">New Search</button>
     </section>
 
@@ -200,6 +203,11 @@ function searchesfunc()
   _searchesNameFilter = ''
   _searchesSort = null
   _searchesSelectedIds = {}
+  $('#importSearchesFile').off('change.searchesImport').on('change.searchesImport', function(e) {
+    var file = e.target.files && e.target.files[0]
+    if(file) importSearchesFromFile(file)
+    this.value = ''
+  })
   if(_searchesFilterTimer) { clearTimeout(_searchesFilterTimer); _searchesFilterTimer = null }
   $('#searchesFilterInput').val('').off('input.searchesFilter').on('input.searchesFilter', function() {
     var val = $(this).val()
@@ -257,6 +265,7 @@ function searchesfunc()
         </tr>
       `)
       updateMoveToGroupBtn()
+      updateExportSelectedBtn()
       return
     }
     jobs = user.jobs
@@ -338,6 +347,7 @@ function searchesfunc()
       updateViewSelectedBtn()
       updateRefreshSelectedBtn()
       updateMoveToGroupBtn()
+      updateExportSelectedBtn()
     })
     // Individual checkbox updates button state
     $(document).on('change', '.searchSelectCb', function(){
@@ -349,6 +359,7 @@ function searchesfunc()
       updateViewSelectedBtn()
       updateRefreshSelectedBtn()
       updateMoveToGroupBtn()
+      updateExportSelectedBtn()
     })
     $(document).on('change', '.searchGroupHeaderCb', function(){
       toggleSearchGroupSelect($(this).data('groupid'), this.checked)
@@ -713,6 +724,7 @@ function toggleSearchGroupSelect(groupId, checked) {
   updateViewSelectedBtn()
   updateRefreshSelectedBtn()
   updateMoveToGroupBtn()
+  updateExportSelectedBtn()
 }
 
 function moveSelectedToGroup(groupId) {
@@ -732,6 +744,83 @@ function moveSelectedToGroup(groupId) {
       if(--remaining === 0) renderSearchesTable()
     })
   })
+}
+
+function updateExportSelectedBtn() {
+  var count = Object.keys(_searchesSelectedIds).length
+  $('#exportSearchesBtn').prop('disabled', count === 0)
+  $('#exportSearchesBtn').html('<i class="fa fa-download"></i> Export' + (count > 0 ? ' (' + count + ')' : ''))
+}
+
+function exportSelectedSearches() {
+  var selected = Object.keys(_searchesSelectedIds)
+  if(!selected.length) return
+  var modalBody =
+    '<p>Export ' + selected.length + ' search' + (selected.length > 1 ? 'es' : '') + ' and their groups to a JSON file?</p>' +
+    '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="exportIncludeAdsCb" style="margin-right:5px"> Include scraped listings</label>' +
+    '<p class="text-muted" style="margin-top:6px;font-size:12px">Listings can be large. Images load from external URLs so they stay working on import.</p>'
+  showConfirmModal(
+    'Export Searches',
+    modalBody,
+    function() {
+      var includeAds = $('#exportIncludeAdsCb').is(':checked')
+      APIexportSearches({ jobIds: selected, includeAds: includeAds }, function(payload) {
+        if(!payload) return
+        var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+        var url = URL.createObjectURL(blob)
+        var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        var a = document.createElement('a')
+        a.href = url
+        a.download = 'searches-export-' + stamp + '.json'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        setTimeout(function(){ URL.revokeObjectURL(url) }, 1000)
+      })
+    },
+    { confirmLabel: 'Export', confirmClass: 'btn-primary' }
+  )
+}
+
+function importSearchesFromFile(file) {
+  if(!file) return
+  var reader = new FileReader()
+  reader.onload = function(e) {
+    var payload
+    try { payload = JSON.parse(e.target.result) }
+    catch(err) { showAlertModal('Invalid File', 'This is not a valid JSON export file.'); return }
+    var jobCount = Array.isArray(payload.jobs) ? payload.jobs.length : 0
+    var groupCount = Array.isArray(payload.searchGroups) ? payload.searchGroups.length : 0
+    var adCount = Array.isArray(payload.ads) ? payload.ads.length : 0
+    if(!jobCount && !groupCount) {
+      showAlertModal('Nothing to Import', 'This file contains no searches or groups.')
+      return
+    }
+    var summary = jobCount + ' search' + (jobCount === 1 ? '' : 'es')
+    summary += ', ' + groupCount + ' group' + (groupCount === 1 ? '' : 's')
+    if(adCount) summary += ', ' + adCount + ' listing' + (adCount === 1 ? '' : 's')
+    var modalBody =
+      '<p>Import ' + summary + '?</p>' +
+      '<label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="importOverrideCb" style="margin-right:5px"> Override existing entries (by ID)</label>' +
+      '<p class="text-muted" style="margin-top:6px;font-size:12px">Unchecked: new items are added, duplicates are skipped.</p>'
+    showConfirmModal(
+      'Import Searches',
+      modalBody,
+      function() {
+        var override = $('#importOverrideCb').is(':checked')
+        APIimportSearches({ payload: payload, override: override }, function(stats) {
+          if(!stats) return
+          var msg = '<p><b>Groups:</b> ' + stats.groups.added + ' added, ' + stats.groups.updated + ' updated, ' + stats.groups.skipped + ' skipped</p>' +
+                    '<p><b>Searches:</b> ' + stats.jobs.added + ' added, ' + stats.jobs.updated + ' updated, ' + stats.jobs.skipped + ' skipped</p>'
+          if(adCount) msg += '<p><b>Listings:</b> ' + stats.ads.added + ' added, ' + stats.ads.updated + ' updated, ' + stats.ads.skipped + ' skipped</p>'
+          renderpage('searches')
+          setTimeout(function(){ showAlertModal('Import Complete', msg) }, 400)
+        })
+      },
+      { confirmLabel: 'Import', confirmClass: 'btn-success' }
+    )
+  }
+  reader.readAsText(file)
 }
 
 function _syncGroupHeaderCheckboxes() {
@@ -800,6 +889,7 @@ function renderSearchesTable() {
   updateViewSelectedBtn()
   updateRefreshSelectedBtn()
   updateMoveToGroupBtn()
+  updateExportSelectedBtn()
   if(_pendingRenameGroupId) {
     var pending = _pendingRenameGroupId
     _pendingRenameGroupId = null

@@ -57,9 +57,9 @@ app.get('/config.js', (req, res) => {
 
 app.use(express.static('views'));
 // support parsing of application/json type post data
-app.use(express.json())
+app.use(express.json({ limit: '100mb' }))
 //support parsing of application/x-www-form-urlencoded post data
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 app.get('*', (req, res, next) => {
 	if(req.query)
@@ -229,6 +229,18 @@ app.post('/clearJobAds', [
   		check('jobId').exists(),
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.clearJobAds);
+});
+
+app.post('/exportSearches', [
+		check('jobIds').exists()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.jobs.exportSearches);
+});
+
+app.post('/importSearches', [
+		check('payload').exists()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.jobs.importSearches);
 });
 
 app.post('/checkLatestAds', [

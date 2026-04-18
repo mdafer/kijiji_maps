@@ -225,6 +225,124 @@ module.exports = {
 			Helpers.logger.log(err);return callback({ status: ApiStatus.DB_ERROR, meta: err})
 		}
 	},
+	exportSearches: async function(params, authUser, callback){
+		try{
+			let jobIds = params.jobIds
+			if(typeof jobIds === 'string') jobIds = jobIds.split(',').map(s => s.trim()).filter(Boolean)
+			if(!Array.isArray(jobIds) || !jobIds.length)
+				return callback({ status: ApiStatus.INVALID_REQUEST, meta: {message:"jobIds required"}})
+			const idSet = new Set(jobIds.map(String))
+			const user = await params.db.get('users').findOne({_id: authUser._id})
+			if(!user) return callback({ status: ApiStatus.USER_NO_LONGER_EXISTS, meta: null })
+			const exportJobs = (user.jobs || [])
+				.filter(j => idSet.has(String(j.id)))
+				.map(j => pick(j, ['id', 'name', 'url', 'description', 'platform', 'groupId', 'gridDepth', 'fetchDetails', 'fetchAvailability', 'lastUpdated']))
+			const groupIds = new Set(exportJobs.map(j => j.groupId).filter(Boolean).map(String))
+			const exportGroups = (user.searchGroups || []).filter(g => groupIds.has(String(g.id)))
+			const result = { version: 1, exportedAt: new Date(), jobs: exportJobs, searchGroups: exportGroups }
+			if(params.includeAds === true || params.includeAds === 'true') {
+				const adQuery = { $or: exportJobs.map(j => ({[`jobs.${j.id}`]: {$exists: true}})) }
+				const ads = adQuery.$or.length ? await params.db.get('ads').find(adQuery) : []
+				ads.forEach(ad => {
+					if(!ad.jobs) return
+					const filtered = {}
+					for(const jid of Object.keys(ad.jobs)) if(idSet.has(jid)) filtered[jid] = ad.jobs[jid]
+					ad.jobs = filtered
+				})
+				result.ads = ads
+			}
+			return callback({status: ApiStatus.SUCCESS, meta: result})
+		}
+		catch(err) {
+			Helpers.logger.log(err); return callback({ status: ApiStatus.DB_ERROR, meta: err})
+		}
+	},
+	importSearches: async function(params, authUser, callback){
+		try{
+			let payload = params.payload
+			if(typeof payload === 'string') {
+				try { payload = JSON.parse(payload) } catch(e) { return callback({ status: ApiStatus.INVALID_REQUEST, meta: {message:"payload is not valid JSON"}}) }
+			}
+			if(!payload || typeof payload !== 'object')
+				return callback({ status: ApiStatus.INVALID_REQUEST, meta: {message:"payload required"}})
+			const override = params.override === true || params.override === 'true'
+			const incomingJobs = Array.isArray(payload.jobs) ? payload.jobs : []
+			const incomingGroups = Array.isArray(payload.searchGroups) ? payload.searchGroups : []
+			const incomingAds = Array.isArray(payload.ads) ? payload.ads : []
+
+			const user = await params.db.get('users').findOne({_id: authUser._id})
+			if(!user) return callback({ status: ApiStatus.USER_NO_LONGER_EXISTS, meta: null })
+
+			const stats = { groups: {added:0, updated:0, skipped:0}, jobs: {added:0, updated:0, skipped:0}, ads: {added:0, updated:0, skipped:0} }
+
+			const groupsById = new Map((user.searchGroups || []).map(g => [String(g.id), g]))
+			for(const g of incomingGroups) {
+				if(!g || !g.id) continue
+				const id = String(g.id)
+				const clean = { id, name: (g.name || 'Untitled').toString().slice(0, 80) }
+				if(groupsById.has(id)) {
+					if(override) { groupsById.set(id, clean); stats.groups.updated++ }
+					else stats.groups.skipped++
+				} else {
+					groupsById.set(id, clean); stats.groups.added++
+				}
+			}
+
+			const jobsById = new Map((user.jobs || []).map(j => [String(j.id), j]))
+			for(const j of incomingJobs) {
+				if(!j || !j.id) continue
+				const id = String(j.id)
+				const clean = pick(j, ['id', 'name', 'url', 'description', 'platform', 'groupId', 'gridDepth', 'fetchDetails', 'fetchAvailability', 'lastUpdated'])
+				clean.id = id
+				if(jobsById.has(id)) {
+					if(override) { jobsById.set(id, clean); stats.jobs.updated++ }
+					else stats.jobs.skipped++
+				} else {
+					jobsById.set(id, clean); stats.jobs.added++
+				}
+			}
+
+			await params.db.get('users').update(
+				{_id: authUser._id},
+				{$set: {jobs: Array.from(jobsById.values()), searchGroups: Array.from(groupsById.values())}}
+			)
+
+			for(const ad of incomingAds) {
+				if(!ad || !ad._id) { stats.ads.skipped++; continue }
+				let adId
+				try { adId = params.db.id(ad._id) } catch(e) { stats.ads.skipped++; continue }
+				const existing = await params.db.get('ads').findOne({_id: adId})
+				if(existing) {
+					if(override) {
+						const mergedJobs = Object.assign({}, existing.jobs || {}, ad.jobs || {})
+						const { _id, ...rest } = ad
+						await params.db.get('ads').update({_id: adId}, {$set: Object.assign({}, rest, {jobs: mergedJobs})})
+						stats.ads.updated++
+					} else {
+						const updates = {}
+						for(const jid of Object.keys(ad.jobs || {})) {
+							if(!existing.jobs || !existing.jobs[jid]) updates['jobs.'+jid] = ad.jobs[jid]
+						}
+						if(Object.keys(updates).length) {
+							await params.db.get('ads').update({_id: adId}, {$set: updates})
+							stats.ads.updated++
+						} else {
+							stats.ads.skipped++
+						}
+					}
+				} else {
+					const { _id, ...rest } = ad
+					await params.db.get('ads').insert(Object.assign({_id: adId}, rest))
+					stats.ads.added++
+				}
+			}
+
+			return callback({status: ApiStatus.SUCCESS, meta: stats})
+		}
+		catch(err) {
+			Helpers.logger.log(err); return callback({ status: ApiStatus.DB_ERROR, meta: err})
+		}
+	},
 	processPendingJobs: function(params, authUser, callback){
 		Helpers.logger.log("Checking for stale pending jobs...")
 		params.db.get('users').aggregate([{$unwind : "$jobs"},{$match : {"jobs.statusCode":2}},{$project : {id : "$jobs.id", url:"$jobs.url", name:'$jobs.name', platform:'$jobs.platform', resumePageUrl:'$jobs.resumePageUrl', fingerprint:'$jobs.fingerprint', resumeOffset:'$jobs.resumeOffset', fetchDetails:'$jobs.fetchDetails', fetchAvailability:'$jobs.fetchAvailability', gridDepth:'$jobs.gridDepth'}}]).then((jobs) => {

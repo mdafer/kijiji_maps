@@ -194,6 +194,50 @@ function APIupdateSearchGroups(params, callback=null)
     })
 }
 
+function APIexportSearches(params, callback=null)
+{
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        contentType: "application/json",
+        url: apiURL+'exportSearches',
+        data: typeof params === 'string' ? params : JSON.stringify(params),
+        beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
+        success: function(data){ if(callback) callback(data.meta) },
+        error: function (err) {
+            alert(err.responseJSON && err.responseJSON.msg || 'Export failed')
+            if(err.responseJSON && clearStorageErrorCodes.includes(err.responseJSON.status))
+            {
+                clearLocalStorage()
+                renderpage()
+            }
+            console.log(err.responseJSON)
+        }
+    })
+}
+
+function APIimportSearches(params, callback=null)
+{
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        contentType: "application/json",
+        url: apiURL+'importSearches',
+        data: typeof params === 'string' ? params : JSON.stringify(params),
+        beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token)},
+        success: function(data){ if(callback) callback(data.meta) },
+        error: function (err) {
+            alert(err.responseJSON && err.responseJSON.msg || 'Import failed')
+            if(err.responseJSON && clearStorageErrorCodes.includes(err.responseJSON.status))
+            {
+                clearLocalStorage()
+                renderpage()
+            }
+            console.log(err.responseJSON)
+        }
+    })
+}
+
 function APIdeleteJob(params, callback=null)
 {
     $.ajax({ 
