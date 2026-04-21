@@ -210,6 +210,7 @@ function resetJob()
       </div>
       <div class="checkbox"><label><input type="checkbox" id="refreshFetchDetails" value="1"> Fetch full photos &amp; amenities <small class="text-muted">(slower — visits each listing page)</small></label></div>
       <div class="checkbox"><label><input type="checkbox" id="refreshFetchAvailability" value="1"> Fetch availability calendar</label></div>
+      <div class="checkbox"><label><input type="checkbox" id="refreshAutoConfirmEmpty" value="1"> Auto confirm no listings <small class="text-muted">(skip soft-block prompts)</small></label></div>
     </div>` : ''
   var modalHtml = `
   <div id="refreshListingsModal" class="modal fade" role="dialog" style="display:none">
@@ -232,6 +233,7 @@ function resetJob()
   </div>`
   $('body').append(modalHtml)
   $('#refreshListingsModal .BStooltip').tooltip({ trigger: 'hover', container: 'body' })
+  if(isAirbnb && window._airbnbAutoConfirmEmpty) $('#refreshAutoConfirmEmpty').prop('checked', true)
   $('#refreshListingsConfirmBtn').on('click', function() {
     $('#refreshListingsModal').modal('hide')
     $('#informationModal').modal('show')
@@ -240,6 +242,8 @@ function resetJob()
       params.fetchDetails = $('#refreshFetchDetails').is(':checked')
       params.fetchAvailability = $('#refreshFetchAvailability').is(':checked')
       params.gridDepth = Number($('#refreshGridDepth').val()) || 1
+      if(typeof setAutoConfirmEmpty === 'function')
+        setAutoConfirmEmpty($('#refreshAutoConfirmEmpty').is(':checked'))
     }
     APIresetJob(JSON.stringify(params))
   })

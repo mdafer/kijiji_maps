@@ -108,6 +108,7 @@ var searchespage= `<!-- Content Header (Page header) -->
               </div>
               <div class="checkbox"><label><input type="checkbox" name="fetchDetails" value="1" checked> Fetch full photos &amp; amenities <small class="text-muted">(slower — visits each listing page)</small></label></div>
               <div class="checkbox"><label><input type="checkbox" name="fetchAvailability" value="1" checked> Fetch availability calendar</label></div>
+              <div class="checkbox"><label><input type="checkbox" name="autoConfirmEmpty" id="newSearchAutoConfirmEmpty" value="1"> Auto confirm no listings <small class="text-muted">(skip soft-block prompts)</small></label></div>
             </div>
 
             <!-- textarea -->
@@ -240,6 +241,7 @@ function searchesfunc()
       $('#newSearchUrlInput').attr('placeholder', 'https://www.airbnb.ca/s/Toronto/...')
       $('#newSearchUrlLabel').text('Airbnb Search Link')
       $('#newSearchAirbnbExtras').show()
+      if(window._airbnbAutoConfirmEmpty) $('#newSearchAutoConfirmEmpty').prop('checked', true)
     } else if(plat === 'facebook') {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.facebook.com/marketplace/toronto/propertyrentals?...')
       $('#newSearchUrlLabel').text('Facebook Marketplace Search Link')
@@ -423,9 +425,12 @@ function searchesfunc()
       formData.fetchDetails = formData.fetchDetails ? true : false
       formData.fetchAvailability = formData.fetchAvailability ? true : false
       formData.gridDepth = Number(formData.gridDepth) || 1
+      if(typeof setAutoConfirmEmpty === 'function')
+        setAutoConfirmEmpty(!!formData.autoConfirmEmpty)
     } else {
       delete formData.gridDepth
     }
+    delete formData.autoConfirmEmpty
     APIaddNewSearch(formData, ()=>{$('#newSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
   })
   $('#editSearchUrlParams').off('input.airbnbParams change.airbnbParams')
