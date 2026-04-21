@@ -235,8 +235,6 @@ function resetJob()
   $('#refreshListingsModal .BStooltip').tooltip({ trigger: 'hover', container: 'body' })
   if(isAirbnb && window._airbnbAutoConfirmEmpty) $('#refreshAutoConfirmEmpty').prop('checked', true)
   $('#refreshListingsConfirmBtn').on('click', function() {
-    $('#refreshListingsModal').modal('hide')
-    $('#informationModal').modal('show')
     var params = {jobId}
     if(isAirbnb) {
       params.fetchDetails = $('#refreshFetchDetails').is(':checked')
@@ -245,6 +243,8 @@ function resetJob()
       if(typeof setAutoConfirmEmpty === 'function')
         setAutoConfirmEmpty($('#refreshAutoConfirmEmpty').is(':checked'))
     }
+    $('#refreshListingsModal').modal('hide')
+    $('#informationModal').modal('show')
     APIresetJob(JSON.stringify(params))
   })
   $('#refreshListingsModal').on('hidden.bs.modal', function(){ $(this).remove() })

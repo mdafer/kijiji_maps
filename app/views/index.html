@@ -457,6 +457,13 @@
     $('#autoConfirmEmptyChk').prop('checked', !!enabled)
   }
 
+  // Re-sync the info-modal checkbox from the global flag whenever the modal
+  // is shown — renderpage() re-injects the toolbar template, creating a fresh
+  // unchecked element that otherwise forgets the user's prior selection.
+  $(document).on('show.bs.modal', '#informationModal', function() {
+    $('#autoConfirmEmpty').prop('checked', !!window._airbnbAutoConfirmEmpty)
+  })
+
   // Manual paste flow — when backend is soft-blocked, show inline UI in information modal
   socket.on('needManualResponse', function(data) {
     window._pendingManualRequestId = data.requestId
