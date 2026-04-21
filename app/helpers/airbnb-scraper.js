@@ -11,9 +11,44 @@ function sanitizeKeys(obj) {
 const Helpers = require('../helpers/includes'),
 	eachOfLimit = require('async/eachOfLimit'),
 	axios = require('axios'),
+	cheerio = require('cheerio'),
 	{ fetchPage, seedCookies } = require('../helpers/browser'),
 	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20',
 	AIRBNB_AVAILABILITY_HASH = 'b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914'
+
+// Strip query string (e.g. ?im_w=720) so SSR <img src> matches JSON baseUrl.
+function stripImageQuery(u) {
+	if (!u) return ''
+	const q = u.indexOf('?')
+	return q === -1 ? u : u.substring(0, q)
+}
+
+// Walk the mosaic gallery DOM for <section><h2>Category</h2>...<img></section>
+// groups and for [id^="scrollTo_Category"] containers, returning a
+// {cleanUrl: category} map. Used to backfill categories for photos whose JSON
+// mediaItem has no caption/accessibilityLabel/roomInfo.
+function extractCategoriesFromHtml(html) {
+	const urlToCat = {}
+	try {
+		const $ = cheerio.load(html)
+		const assign = (title, $scope) => {
+			if (!title) return
+			$scope.find('img').each((_, img) => {
+				const uri = $(img).attr('data-original-uri') || $(img).attr('src') || ''
+				const clean = stripImageQuery(uri)
+				if (clean && !urlToCat[clean]) urlToCat[clean] = title
+			})
+		}
+		$('[id^="scrollTo_"]').each((_, el) => {
+			const id = (el.attribs && el.attribs.id) || ''
+			assign(id.substring('scrollTo_'.length).trim(), $(el))
+		})
+		$('section').each((_, sec) => {
+			assign(($(sec).find('h2').first().text() || '').trim(), $(sec))
+		})
+	} catch(e) {}
+	return urlToCat
+}
 
 const detailDelay = () => Number(process.env.AIRBNB_DETAIL_DELAY_MS) || 1000
 const requestErrorDelay = () => Number(process.env.AIRBNB_ERROR_DELAY_MS) || 60000
@@ -360,6 +395,22 @@ async function fetchListingDetails(listingId, bookingParams) {
 			})
 		}
 	}
+
+	// Backfill categories from the mosaic DOM for photos the JSON didn't label.
+	const categorizedUrls = new Set()
+	Object.keys(photoCategories).forEach(cat => {
+		photoCategories[cat].forEach(u => categorizedUrls.add(stripImageQuery(u)))
+	})
+	const domCats = extractCategoriesFromHtml(html)
+	photos.forEach(url => {
+		const clean = stripImageQuery(url)
+		if (categorizedUrls.has(clean)) return
+		const cat = domCats[clean]
+		if (!cat) return
+		if (!photoCategories[cat]) photoCategories[cat] = []
+		photoCategories[cat].push(url)
+		categorizedUrls.add(clean)
+	})
 
 	return {
 		picture_urls: photos,
