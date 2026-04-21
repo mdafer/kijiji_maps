@@ -21,7 +21,11 @@ var _favoriteMarkerIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComp
 
 function getMarkerIconForListing(listing) {
   if(typeof isFavorite === 'function' && isFavorite(listing._id))
-    return { url: _favoriteMarkerIconUrl }
+    return {
+      url: _favoriteMarkerIconUrl,
+      scaledSize: new google.maps.Size(28, 37),
+      anchor: new google.maps.Point(14, 37)
+    }
   if(visitedUrls.includes(listing.url))
     return { url: "https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png" }
   return { url: "https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png" }
