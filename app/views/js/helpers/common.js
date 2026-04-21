@@ -303,6 +303,8 @@ function toggleFavoriteBtn(el) {
 	var listingId = $(el).data('listingid')
 	toggleFavorite(listingId, function(isFav) {
 		$(el).find('i').css('color', isFav ? '#e74c3c' : '#ccc')
+		if(typeof updateMarkerIconForListing === 'function')
+			updateMarkerIconForListing(listingId)
 	})
 }
 

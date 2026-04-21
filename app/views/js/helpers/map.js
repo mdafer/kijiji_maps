@@ -12,6 +12,29 @@ var _allAmenities = new Set()
 var _amenityIdMap = {}
 var _savedHideAmenities = []
 
+var _favoriteMarkerIconUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">' +
+  '<path d="M16 0C7.2 0 0 7.2 0 16c0 10.4 16 26 16 26s16-15.6 16-26C32 7.2 24.8 0 16 0z" fill="#e74c3c" stroke="#8e1e17" stroke-width="1"/>' +
+  '<path d="M16 24.5c-0.8 0-7.5-4-7.5-9.5 0-2.3 1.9-4.2 4.2-4.2 1.4 0 2.6.7 3.3 1.7.7-1 1.9-1.7 3.3-1.7 2.3 0 4.2 1.9 4.2 4.2 0 5.5-6.7 9.5-7.5 9.5z" fill="#ffffff"/>' +
+  '</svg>'
+)
+
+function getMarkerIconForListing(listing) {
+  if(typeof isFavorite === 'function' && isFavorite(listing._id))
+    return { url: _favoriteMarkerIconUrl }
+  if(visitedUrls.includes(listing.url))
+    return { url: "https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png" }
+  return { url: "https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png" }
+}
+
+function updateMarkerIconForListing(listingId) {
+  var marker = _markers.find(function(m){ return m.listingData && m.listingData._id === listingId })
+  if(!marker) return
+  marker.setIcon(getMarkerIconForListing(marker.listingData))
+  if(typeof isFavorite === 'function' && isFavorite(listingId) && !marker.getMap())
+    marker.setMap(map)
+}
+
 function buildPopupHtml(listing) {
   var isAirbnb = listing.platform === 'airbnb'
   var isFacebook = listing.platform === 'facebook'
@@ -121,14 +144,10 @@ function setMarkersByListings(map, listings, centerLocation = false) {
     return
   if(centerLocation)
     centerMapLocation(listings[0].lat, listings[0].lon)
-  var visitedSet = new Set(visitedUrls)
   listings.forEach(listing=> {
-    let icon ={url:"https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png"}
-    if(visitedSet.has(listing.url))
-      icon.url = "https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png"
     var marker = new google.maps.Marker({
       position: new google.maps.LatLng(listing.lat, listing.lon),
-      icon, map: map, title: listing.address, url: listing.url
+      icon: getMarkerIconForListing(listing), map: map, title: listing.address, url: listing.url
     });
     marker.listingData = listing
     _markers.push(marker)
@@ -162,9 +181,10 @@ function markAsViewed(marker, url)
   localStorage.setItem('visitedUrls'+jobId, JSON.stringify(visitedUrls))
   if(!marker)
     marker = _markers.find(marker => {return marker.url === url})
-  if(localStorage.getItem('hideMarkers')=='true')
+  var listingIsFavorite = typeof isFavorite === 'function' && marker.listingData && isFavorite(marker.listingData._id)
+  if(localStorage.getItem('hideMarkers')=='true' && !listingIsFavorite)
     marker.setMap(null);
-  marker.setIcon("https://maps.gstatic.com/mapfiles/ms2/micons/blue-dot.png")
+  marker.setIcon(getMarkerIconForListing(marker.listingData))
   return true
 }
 
@@ -172,7 +192,11 @@ function getViewedMarkers(markers=null)
 {
   markers = markers || _markers
   var visitedSet = new Set(visitedUrls)
-  return markers.filter(function(marker){ return visitedSet.has(marker.url) })
+  return markers.filter(function(marker){
+    if(!visitedSet.has(marker.url)) return false
+    if(typeof isFavorite === 'function' && marker.listingData && isFavorite(marker.listingData._id)) return false
+    return true
+  })
 }
 
 /*function mapCheckNewListings()
