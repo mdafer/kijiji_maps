@@ -803,7 +803,10 @@ module.exports = {
 				url += '?' + qp.toString()
 			}
 			try{
-		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id)},{$set: {['jobs.'+params.jobId]: {fingerprint:params.fingerprint}, url}})
+		    	let listingPrice = listing.price || 0
+		    	let cacheHitSet = {['jobs.'+params.jobId]: {fingerprint:params.fingerprint, price: listingPrice}, url}
+		    	if (listingPrice) cacheHitSet.price = listingPrice
+		    	let doc = await params.db.get('ads').findOneAndUpdate({'airbnbId': String(listing.id)},{$set: cacheHitSet})
 		    	if (doc){
 		    		// Optionally backfill missing details/availability for cached listings
 		    		const needsDetails = params.fetchDetails && ((!doc.amenities || !doc.amenities.length) || (!doc.picture_urls || doc.picture_urls.length <= 1))
@@ -896,7 +899,7 @@ module.exports = {
 					'pageUrl': params.pageUrl,
 					'platform': 'airbnb',
 					'availability': availability,
-					'jobs': {[params.jobId]:{fingerprint: params.fingerprint}}
+					'jobs': {[params.jobId]:{fingerprint: params.fingerprint, price}}
 			    }, function (err, doc) {
 			        if (err) {
 						Helpers.logger.log({print: `Error adding listing to DB: `+ err, channels:params.jobId+'jobWarning'})

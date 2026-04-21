@@ -654,6 +654,37 @@ function clearSavedSettings() {
 	localStorage.removeItem('savedHideDisliked')
 }
 
+// Returns the numeric price to display for a listing in the current view.
+// Airbnb prices vary by search (date range), so each search records its own
+// price under listing.jobs[jobId].price. When multiple searches are in view,
+// show the cheapest. Falls back to the top-level listing.price.
+function getDisplayPrice(listing) {
+	if(!listing) return 0
+	var jobs = listing.jobs
+	var fallback = listing.price || 0
+	if(!jobs || typeof jobs !== 'object') return fallback
+
+	var ids = null
+	if(typeof _favoritesOnly !== 'undefined' && _favoritesOnly && typeof _favJobIds !== 'undefined' && _favJobIds && _favJobIds.length)
+		ids = _favJobIds
+	else if(jobId === 'multi')
+		ids = getMultiJobIds()
+	else if(jobId === 'all')
+		ids = Object.keys(jobs)
+	else if(jobId)
+		ids = [jobId]
+
+	if(!ids || !ids.length) return fallback
+
+	var prices = []
+	for(var i=0;i<ids.length;i++) {
+		var j = jobs[ids[i]]
+		if(j && typeof j.price === 'number' && j.price > 0) prices.push(j.price)
+	}
+	if(!prices.length) return fallback
+	return Math.min.apply(null, prices)
+}
+
 // Reads multi-job IDs from URL params first (for sharable links), falls back
 // to localStorage for state set by viewSelectedSearches before a reload.
 function getMultiJobIds() {

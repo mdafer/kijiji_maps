@@ -49,7 +49,7 @@ function buildPopupHtml(listing) {
   if(listing.picture_url)
     html += '<img src="'+listing.picture_url+'" style="max-width:200px;max-height:150px;border-radius:4px;margin-bottom:5px" referrerpolicy="no-referrer">'
 
-  html += '<h4>'+listing.title+'</h4><h4>$'+listing.price+'</h4>'
+  html += '<h4>'+listing.title+'</h4><h4>$'+getDisplayPrice(listing)+'</h4>'
 
   if(isAirbnb || isFacebook) {
     var parts = []

@@ -105,8 +105,8 @@ function _applySort() {
   _gridListings.sort(function(a, b) {
     var va, vb
     if(field === 'price') {
-      va = parseFloat(a.price) || 0
-      vb = parseFloat(b.price) || 0
+      va = parseFloat(getDisplayPrice(a)) || 0
+      vb = parseFloat(getDisplayPrice(b)) || 0
     } else {
       va = a._id ? parseInt(a._id.substring(0, 8), 16) : 0
       vb = b._id ? parseInt(b._id.substring(0, 8), 16) : 0
@@ -262,7 +262,7 @@ function buildCardHtml(listing) {
   html += '  <div class="grid-card-img-wrap">'+imgHtml+'</div>'
   html += '  <div class="grid-card-body">'
   html += '    <div class="grid-card-title" title="'+listing.title+'">'+listing.title+'</div>'
-  html += '    <div class="grid-card-price">$'+listing.price+'</div>'
+  html += '    <div class="grid-card-price">$'+getDisplayPrice(listing)+'</div>'
   html += '    <div class="grid-card-details">'+details.join(' &middot; ')+'</div>'
   html += amenityHtml
   var favColor = isFavorite(listing._id) ? '#e74c3c' : '#ccc'
@@ -352,7 +352,7 @@ function buildRowHtml(listing) {
   html += '  <div class="grid-row-header">'
   html += '    <button class="grid-row-collapse-btn" onclick="toggleRowCollapse(this)" title="Collapse/expand"><i class="fa fa-chevron-up"></i></button>'
   html += '    <span class="grid-row-title" title="'+listing.title+'">'+listing.title+'</span>'
-  html += '    <span class="grid-row-price">$'+listing.price+'</span>'
+  html += '    <span class="grid-row-price">$'+getDisplayPrice(listing)+'</span>'
   html += '    <span class="grid-row-details">'+details.join(' &middot; ')+'</span>'
   var favColor = isFavorite(listing._id) ? '#e74c3c' : '#ccc'
   var disColor = isDisliked(listing._id) ? '#34495e' : '#ccc'
