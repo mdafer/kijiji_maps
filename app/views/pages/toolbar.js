@@ -57,6 +57,9 @@ var toolbarHtml = `
           <li class="divider"></li>
           <li><a href="#" onclick="sortGrid('date','desc');return false"><i class="fa fa-sort-amount-desc"></i> Date: Newest First</a></li>
           <li><a href="#" onclick="sortGrid('date','asc');return false"><i class="fa fa-sort-amount-asc"></i> Date: Oldest First</a></li>
+          <li class="divider"></li>
+          <li><a href="#" onclick="sortGrid('m2','asc');return false"><i class="fa fa-sort-amount-asc"></i> m²: Small to Large</a></li>
+          <li><a href="#" onclick="sortGrid('m2','desc');return false"><i class="fa fa-sort-amount-desc"></i> m²: Large to Small</a></li>
         </ul>
       </div>
 
@@ -172,6 +175,16 @@ var toolbarHtml = `
               <i class="fa fa-camera"></i> Hide listings with 1 or no photos
             </label>
             <input id="minPhotos" name="minPhotos" type="hidden">
+            <div class="filter-row" style="margin-top:8px">
+              <div class="filter-field" style="flex:1">
+                <span class="filter-field-label">Quinto Andar photo quality <small class="filter-hint">(applied on display — no re-scrape needed)</small></span>
+                <select id="qaImageSize" class="filter-input" onchange="setQaImageSize(this.value)">
+                  <option value="med">Low (med, ~30KB)</option>
+                  <option value="xxl" selected>High (xxl, ~140KB)</option>
+                  <option value="original">Original (~800KB, slowest)</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <!-- Amenities -->

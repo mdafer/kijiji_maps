@@ -594,6 +594,9 @@ function restoreFilters() {
 		$('#minPhotos').val(filters.minPhotos)
 		$('#minPhotosCheck').prop('checked', true)
 	}
+	// QA image-size setting is stored separately (not a filter) — sync the dropdown
+	var qaSize = localStorage.getItem('qaImageSize')
+	if(qaSize) $('#qaImageSize').val(qaSize)
 }
 
 function saveShapeGeo() {
@@ -892,6 +895,21 @@ function showAlertModal(title, message) {
  * @param {function} onSelect  called with the chosen google.maps.drawing.OverlayType
  */
 function showDrawShapeModal(onSelect) {
+	// If another modal is already open, stack on top of it (Bootstrap doesn't
+	// auto-handle nested modals — both modal and its backdrop need a higher
+	// z-index than the underlying modal+backdrop, or the second one renders behind).
+	var $existing = $('.modal.in, .modal.show').not('#drawShapeModal')
+	if ($existing.length) {
+		var baseZ = Math.max.apply(null, $existing.map(function(){ return parseInt($(this).css('z-index'), 10) || 1050 }).get())
+		$('#drawShapeModal').css('z-index', baseZ + 20)
+		$('#drawShapeModal').one('shown.bs.modal', function() {
+			$('.modal-backdrop').not('.stacked-backdrop').last().addClass('stacked-backdrop').css('z-index', baseZ + 10)
+		})
+		$('#drawShapeModal').one('hidden.bs.modal', function() {
+			$('.modal-backdrop.stacked-backdrop').removeClass('stacked-backdrop')
+			$('#drawShapeModal').css('z-index', '')
+		})
+	}
 	$('#drawShapeModal').modal('show')
 	$('#drawShapeCircleBtn').off('click').on('click', function() {
 		$('#drawShapeModal').modal('hide')
@@ -900,5 +918,9 @@ function showDrawShapeModal(onSelect) {
 	$('#drawShapePolygonBtn').off('click').on('click', function() {
 		$('#drawShapeModal').modal('hide')
 		if(typeof onSelect === 'function') onSelect(google.maps.drawing.OverlayType.POLYGON)
+	})
+	$('#drawShapeRectangleBtn').off('click').on('click', function() {
+		$('#drawShapeModal').modal('hide')
+		if(typeof onSelect === 'function') onSelect(google.maps.drawing.OverlayType.RECTANGLE)
 	})
 }

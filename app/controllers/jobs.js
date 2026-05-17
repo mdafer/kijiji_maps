@@ -6,6 +6,13 @@ uuid = require('uuid-random')
 
 function jobPlatform(job) { return job.platform || 'kijiji' }
 
+function scraperFor(platform) {
+	if (platform === 'airbnb') return Helpers.airbnbScraper
+	if (platform === 'facebook') return Helpers.fbScraper
+	if (platform === 'quintoandar') return Helpers.quintoandarScraper
+	return Helpers.scraper
+}
+
 // Parses a stored amenity list. Accepts an array, a JSON-encoded array, or a
 // legacy comma-separated string. Comma-fallback keeps old DB values readable.
 function parseAmenityList(raw) {
@@ -48,7 +55,7 @@ async function processUserQueue(db, userId, platform) {
 		if(job.fetchDetails !== undefined) myparams.fetchDetails = job.fetchDetails
 		if(job.fetchAvailability !== undefined) myparams.fetchAvailability = job.fetchAvailability
 		if(job.gridDepth) myparams.gridDepth = job.gridDepth
-		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
+		const scraper = scraperFor(platform)
 		;(async () => {
 			let processedPages = 0
 			try {
@@ -85,7 +92,7 @@ module.exports = {
 		if(job.fetchAvailability !== undefined) params.fetchAvailability = job.fetchAvailability
 		if(job.gridDepth) params.gridDepth = job.gridDepth
 		callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: job.id}})
-		const scraper = platform === 'airbnb' ? Helpers.airbnbScraper : platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
+		const scraper = scraperFor(platform)
 		const pagesProcessed = await scraper.processPage(params)
 		Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:pagesProcessed}, channels:authUser._id+'command'})
 		Helpers.logger.log({ command:'doneProcAndValid', print: pagesProcessed, channels:job.id+'command'})
@@ -219,11 +226,28 @@ module.exports = {
 			params.fetchAvailability = params.fetchAvailability !== undefined ? params.fetchAvailability : job.fetchAvailability
 			params.gridDepth = params.gridDepth || job.gridDepth || null
 			callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'In Progress', jobUrl:job.url, jobId: params.jobId}})
-			const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : job.platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
+			const scraper = scraperFor(jobPlatform(job))
 			await scraper.processPage(params)
 			Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: params.jobId, pages:params.pageNumber}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: params.pageNumber, channels:params.jobId+'command'})
 			processUserQueue(params.db, authUser._id, jobPlatform(job))
+		} catch(err) { Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'}) }
+	},
+	refetchMissingPhotos: async function(params, authUser, callback){
+		try {
+			const user = await params.db.get('users').findOne({"jobs.id":params.jobId})
+			if(!user)
+				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job '"+params.jobId+"' not found"}})
+			const job = user.jobs.find(j => j.id == params.jobId)
+			if(!job)
+				return callback({ status: Helpers.ApiStatus.NOT_FOUND, meta: {message:"Job not found"}})
+			const scraper = scraperFor(jobPlatform(job))
+			if(!scraper.refetchMissingPhotos)
+				return callback({ status: Helpers.ApiStatus.INVALID_REQUEST, meta: {message:"Photo refetch not supported for this platform"}})
+			callback({status:Helpers.ApiStatus.SUCCESS, meta:{status:'Started', jobId: params.jobId}})
+			// Run async; progress is logged to the job channel
+			scraper.refetchMissingPhotos({ db: params.db, jobId: params.jobId, jobName: job.name })
+				.catch(err => Helpers.logger.log({print: err, channels: params.jobId+'jobWarning'}))
 		} catch(err) { Helpers.logger.log({print:err, channels:params.jobId+'jobWarning'}) }
 	},
 	clearJobAds: async function(params, authUser, callback){
@@ -434,7 +458,7 @@ module.exports = {
 				if (job.gridDepth) myparams.gridDepth = job.gridDepth
 				if (job.resumePageUrl || job.resumeOffset)
 					Helpers.logger.log(`Resuming job ${job.name} (${job.id}) from offset: ${job.resumeOffset || 0}`)
-				const scraper = job.platform === 'airbnb' ? Helpers.airbnbScraper : job.platform === 'facebook' ? Helpers.fbScraper : Helpers.scraper
+				const scraper = scraperFor(jobPlatform(job))
 				const processedPages = await scraper.processPage(myparams)
 				Helpers.logger.log({ command:'doneProcAndValid', print: {jobId: job.id, pages:processedPages}, channels:authUser._id+'command'})
 				Helpers.logger.log({ command:'doneProcAndValid', print: processedPages, channels:job.id+'command'})

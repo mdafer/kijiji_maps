@@ -25,7 +25,7 @@ function dislikesfunc() {
   $('#dislikeFilterBtn').hide()
   $('#shareViewBtn').hide()
 
-  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
+  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body', placement: 'auto bottom' })
 
   APIgetProfile(null, function(user){
     if(user) _savedHideAmenities = parseAmenityList(user.hideAmenities)

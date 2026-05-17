@@ -17,7 +17,7 @@ function mapfunc()
   visitedUrls = JSON.parse(localStorage.getItem('visitedUrls'+jobId)) || []
   mapClearInformationWindow()
 
-  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
+  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body', placement: 'auto bottom' })
   var reader = new FileReader()
   document.getElementById('importViewedbtn').addEventListener('change', (event) => {
     const myfile = event.target.files[0]

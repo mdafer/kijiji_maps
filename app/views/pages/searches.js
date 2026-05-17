@@ -89,6 +89,7 @@ var searchespage= `<!-- Content Header (Page header) -->
                 <option value="kijiji">Kijiji</option>
                 <option value="airbnb">Airbnb</option>
                 <option value="facebook">Facebook Marketplace</option>
+                <option value="quintoandar">Quinto Andar (Sales)</option>
               </select>
             </div>
             <div class="form-group">
@@ -100,6 +101,19 @@ var searchespage= `<!-- Content Header (Page header) -->
               <input name="url" type="text" class="form-control" id="newSearchUrlInput" placeholder="https://www.kijiji.ca/..." required>
             </div>
             
+
+            <div id="newSearchQuintoExtras" style="display:none">
+              <div class="form-group">
+                <label>Search Area <small class="text-muted">— draw a circle, polygon, or rectangle. QA's URL doesn't encode map position, so we must capture it here. The shape's bounding box is sent to QA.</small></label>
+                <div style="margin-bottom:6px">
+                  <button type="button" class="btn btn-sm btn-default" id="newSearchBboxDrawBtn"><i class="fa fa-pencil"></i> Draw shape</button>
+                  <button type="button" class="btn btn-sm btn-default" id="newSearchBboxUseViewBtn"><i class="fa fa-crop"></i> Use current map view</button>
+                  <button type="button" class="btn btn-sm btn-default" id="newSearchBboxClearBtn" style="display:none"><i class="fa fa-times"></i> Clear</button>
+                  <span id="newSearchBboxStatus" class="text-muted" style="margin-left:8px">(no area set — search will use the whole region implied by the URL slug)</span>
+                </div>
+                <div id="newSearchBboxMap" style="width:100%;height:260px;border:1px solid #ddd;border-radius:4px"></div>
+              </div>
+            </div>
 
             <div id="newSearchAirbnbExtras" style="display:none">
               <div class="form-group">
@@ -177,6 +191,18 @@ var searchespage= `<!-- Content Header (Page header) -->
                 <input id="searchGridDepthBox" name="gridDepth" type="number" class="form-control" min="1" max="4" placeholder="1 (default)">
               </div>
             </div>
+            <div id="editSearchQuintoExtras" style="display:none">
+              <div class="form-group">
+                <label>Search Area <small class="text-muted">— draw a circle, polygon, or rectangle.</small></label>
+                <div style="margin-bottom:6px">
+                  <button type="button" class="btn btn-sm btn-default" id="editSearchBboxDrawBtn"><i class="fa fa-pencil"></i> Draw shape</button>
+                  <button type="button" class="btn btn-sm btn-default" id="editSearchBboxUseViewBtn"><i class="fa fa-crop"></i> Use current map view</button>
+                  <button type="button" class="btn btn-sm btn-default" id="editSearchBboxClearBtn" style="display:none"><i class="fa fa-times"></i> Clear</button>
+                  <span id="editSearchBboxStatus" class="text-muted" style="margin-left:8px">(no area set)</span>
+                </div>
+                <div id="editSearchBboxMap" style="width:100%;height:260px;border:1px solid #ddd;border-radius:4px"></div>
+              </div>
+            </div>
             <input type="submit" value="Submit" style="display:none;">
           </form>
         </div>
@@ -246,10 +272,18 @@ function searchesfunc()
       $('#newSearchUrlInput').attr('placeholder', 'https://www.facebook.com/marketplace/toronto/propertyrentals?...')
       $('#newSearchUrlLabel').text('Facebook Marketplace Search Link')
       $('#newSearchAirbnbExtras').hide()
+      $('#newSearchQuintoExtras').hide()
+    } else if(plat === 'quintoandar') {
+      $('#newSearchUrlInput').attr('placeholder', 'https://www.quintoandar.com.br/comprar/imovel/sao-paulo-sp-brasil/...')
+      $('#newSearchUrlLabel').text('Quinto Andar Sales Search Link')
+      $('#newSearchAirbnbExtras').hide()
+      $('#newSearchQuintoExtras').show()
+      initQuintoBboxPicker('new')
     } else {
       $('#newSearchUrlInput').attr('placeholder', 'https://www.kijiji.ca/...')
       $('#newSearchUrlLabel').text('Kijiji First Page Link (after you click search)')
       $('#newSearchAirbnbExtras').hide()
+      $('#newSearchQuintoExtras').hide()
     }
   }).trigger('change')
   $('#newSearchAirbnbExtras .BStooltip').tooltip({ trigger: 'hover', container: 'body' })
@@ -297,6 +331,20 @@ function searchesfunc()
       )
     })
 
+    $(document).on('click.searchesActions', '#searchesTBody .refetchPhotosBtn', function(event){
+      event.preventDefault();
+      var rfId = $(this).data('id')
+      var rfName = $(this).data('name') || 'this search'
+      showConfirmModal(
+        'Re-scrape missing photos',
+        'Refetch photos for listings in "' + rfName + '" that have no pictures. Progress will be shown in the job log. Continue?',
+        function() {
+          APIrefetchMissingPhotos(rfId)
+        },
+        { confirmLabel: 'Refetch', confirmClass: 'btn-info' }
+      )
+    })
+
     $(document).on('click.searchesActions', '#searchesTBody .delSearchBtn', function(event){
       event.preventDefault();
       var delId = $(this).data('id')
@@ -331,8 +379,16 @@ function searchesfunc()
         $('#searchGridDepthBox').val($(this).data('gridDepth'))
         renderAirbnbUrlParamFields($(this).data('url'))
         $('#editSearchAirbnbExtras').show()
+        $('#editSearchQuintoExtras').hide()
+      } else if(jobPlatform === 'quintoandar') {
+        $('#editSearchAirbnbExtras').hide()
+        $('#editSearchUrlParams').empty()
+        $('#editSearchQuintoExtras').show()
+        var existingBbox = extractBboxFromUrl($(this).data('url'))
+        initQuintoBboxPicker('edit', existingBbox)
       } else {
         $('#editSearchAirbnbExtras').hide()
+        $('#editSearchQuintoExtras').hide()
         $('#editSearchUrlParams').empty()
       }
     })
@@ -400,18 +456,33 @@ function searchesfunc()
 
   // Auto-fill description from Airbnb URL
   $('#newSearchUrlInput').on('input', function() {
-    if($('#newSearchPlatform').val() !== 'airbnb') return
-    var info = parseAirbnbUrl($(this).val())
-    if(!info) return
+    var platform = $('#newSearchPlatform').val()
     var descParts = []
-    if(info.location) descParts.push(info.location)
-    if(info.checkin && info.checkout) descParts.push(info.checkin + ' to ' + info.checkout)
-    else if(info.monthlyStart) descParts.push(info.monthlyStart + ' (' + (info.monthlyLength || '') + ')')
-    if(info.guests) descParts.push(info.guests)
-    if(info.price) descParts.push(info.price)
-    if(info.roomTypes) descParts.push(info.roomTypes)
-    if(info.minBedrooms) descParts.push(info.minBedrooms)
-    if(info.amenities) descParts.push(info.amenities)
+    if(platform === 'airbnb') {
+      var info = parseAirbnbUrl($(this).val())
+      if(!info) return
+      if(info.location) descParts.push(info.location)
+      if(info.checkin && info.checkout) descParts.push(info.checkin + ' to ' + info.checkout)
+      else if(info.monthlyStart) descParts.push(info.monthlyStart + ' (' + (info.monthlyLength || '') + ')')
+      if(info.guests) descParts.push(info.guests)
+      if(info.price) descParts.push(info.price)
+      if(info.roomTypes) descParts.push(info.roomTypes)
+      if(info.minBedrooms) descParts.push(info.minBedrooms)
+      if(info.amenities) descParts.push(info.amenities)
+    } else if(platform === 'quintoandar') {
+      var qinfo = parseQuintoAndarUrl($(this).val())
+      if(!qinfo) return
+      if(qinfo.location) descParts.push(qinfo.location)
+      if(qinfo.businessContext) descParts.push(qinfo.businessContext)
+      if(qinfo.price) descParts.push(qinfo.price)
+      if(qinfo.bedrooms) descParts.push(qinfo.bedrooms)
+      if(qinfo.bathrooms) descParts.push(qinfo.bathrooms)
+      if(qinfo.parking) descParts.push(qinfo.parking)
+      if(qinfo.area) descParts.push(qinfo.area)
+      if(qinfo.houseTypes) descParts.push(qinfo.houseTypes)
+      if(qinfo.tags) descParts.push(qinfo.tags)
+      if(qinfo.bbox) descParts.push(qinfo.bbox)
+    } else return
     var descField = $('#newSearchForm textarea[name="description"]')
     // Only auto-fill if user hasn't manually typed a description
     if(!descField.data('manual')) descField.val(descParts.join(' | '))
@@ -420,19 +491,38 @@ function searchesfunc()
 
   $('#newSearchForm').on('submit', function(event) {
     event.preventDefault();
-    var formData = $('#newSearchForm').serializeObject()
+    // serializeObject returns a JSON STRING (named misleadingly) — parse it so
+    // we can mutate before sending.
+    var formData = JSON.parse($('#newSearchForm').serializeObject())
     if(formData.platform === 'airbnb') {
       formData.fetchDetails = formData.fetchDetails ? true : false
       formData.fetchAvailability = formData.fetchAvailability ? true : false
       formData.gridDepth = Number(formData.gridDepth) || 1
       if(typeof setAutoConfirmEmpty === 'function')
         setAutoConfirmEmpty(!!formData.autoConfirmEmpty)
+    } else if(formData.platform === 'quintoandar') {
+      var bbox = getQuintoBbox('new')
+      if(!bbox) {
+        showAlertModal('Search area required',
+          'Quinto Andar URLs do not encode map position. Draw a shape on the map (circle, polygon, or rectangle) or click "Use current map view" so we know which area to scrape.')
+        return
+      }
+      formData.url = applyBboxToUrl(formData.url, bbox)
+      delete formData.gridDepth
     } else {
       delete formData.gridDepth
     }
     delete formData.autoConfirmEmpty
     APIaddNewSearch(formData, ()=>{$('#newSearchModal').modal('hide');setTimeout(()=>{renderpage('searches')},300)})
   })
+
+  // Wire up the bbox picker buttons (idempotent — handlers re-attached on each render)
+  $('#newSearchBboxDrawBtn').off('click').on('click', function(){ _quintoStartDrawing('new') })
+  $('#newSearchBboxUseViewBtn').off('click').on('click', function(){ _quintoUseCurrentView('new') })
+  $('#newSearchBboxClearBtn').off('click').on('click', function(){ _quintoClearBbox('new') })
+  $('#editSearchBboxDrawBtn').off('click').on('click', function(){ _quintoStartDrawing('edit') })
+  $('#editSearchBboxUseViewBtn').off('click').on('click', function(){ _quintoUseCurrentView('edit') })
+  $('#editSearchBboxClearBtn').off('click').on('click', function(){ _quintoClearBbox('edit') })
   $('#editSearchUrlParams').off('input.airbnbParams change.airbnbParams')
     .on('input.airbnbParams change.airbnbParams', '.airbnb-param-input', syncAirbnbUrlFromFields)
   $('#searchUrlBox').off('input.airbnbParams change.airbnbParams')
@@ -443,12 +533,23 @@ function searchesfunc()
 
   $('#editSearchForm').on('submit', function(event) {
     event.preventDefault();
-    const formData = $(this).serializeObject()
+    // serializeObject returns a JSON STRING (named misleadingly) — parse it so
+    // we can mutate before sending.
+    const formData = JSON.parse($(this).serializeObject())
     const runNow = $(this).data('runNow')
     const jobId = $(this).data('jobId')
     const platform = $(this).data('platform')
     if(platform === 'airbnb') formData.gridDepth = Number(formData.gridDepth) || 1
     else delete formData.gridDepth
+    if(platform === 'quintoandar') {
+      var bbox = getQuintoBbox('edit')
+      if(!bbox) {
+        showAlertModal('Search area required',
+          'Quinto Andar URLs do not encode map position. Draw a shape on the map or click "Use current map view".')
+        return
+      }
+      formData.url = applyBboxToUrl(formData.url, bbox)
+    }
     if(!('groupId' in formData)) formData.groupId = ''
     APIupdateJob(formData, ()=>{
       $('#editSearchModal').modal('hide')
@@ -597,6 +698,293 @@ function parseAirbnbUrl(url) {
   } catch(e) { return null }
 }
 
+// --- Quinto Andar search-area picker ---
+// Reuses showDrawShapeModal (circle / polygon / rectangle). Whatever shape the
+// user draws, we compute its bbox for the QA API (which only accepts a rect).
+// Supports both the new-search and edit-search modals via separate state keyed
+// by modal name ('new' or 'edit').
+var _quintoPickers = {}
+
+function _qpCfg(key) {
+  return key === 'edit'
+    ? { mapId: 'editSearchBboxMap', statusId: 'editSearchBboxStatus', clearBtnId: 'editSearchBboxClearBtn' }
+    : { mapId: 'newSearchBboxMap',  statusId: 'newSearchBboxStatus',  clearBtnId: 'newSearchBboxClearBtn'  }
+}
+
+function initQuintoBboxPicker(key, initialBbox) {
+  key = key || 'new'
+  var cfg = _qpCfg(key)
+  var modalSel = key === 'edit' ? '#editSearchModal' : '#newSearchModal'
+  // The map needs the container to have layout — Bootstrap's fade animation
+  // means we can't init in the click handler. Wait for shown.bs.modal, falling
+  // back to setTimeout if the event already fired (modal reopened with no
+  // re-render).
+  var $modal = $(modalSel)
+  var alreadyVisible = $modal.is(':visible') && parseFloat($modal.css('opacity')) > 0.5
+  var run = function() { _doInitQuintoBboxPicker(key, initialBbox) }
+  if(alreadyVisible) {
+    setTimeout(run, 50)
+  } else {
+    $modal.one('shown.bs.modal', function() { setTimeout(run, 50) })
+    // Safety net in case the event doesn't fire
+    setTimeout(function() { if(!_quintoPickers[key] || !_quintoPickers[key].map) run() }, 800)
+  }
+}
+
+function _doInitQuintoBboxPicker(key, initialBbox) {
+  var cfg = _qpCfg(key)
+  var el = document.getElementById(cfg.mapId)
+  if(!el || !window.google || !google.maps) return
+  // Always rebuild the map on each modal open. Reusing a cached map across
+  // Bootstrap hide/show cycles leaves the canvas blank because Google Maps
+  // caches layout state from when the container was display:none. resize
+  // triggers alone don't reliably recover. Clearing + recreating is cheap.
+  var prev = _quintoPickers[key]
+  if(prev) {
+    if(prev.shape) try { prev.shape.setMap(null) } catch(e) {}
+    if(prev.mgr) try { prev.mgr.setMap(null) } catch(e) {}
+    if(prev.map) try { google.maps.event.clearInstanceListeners(prev.map) } catch(e) {}
+  }
+  // Wipe the container so the old map's DOM doesn't linger
+  el.innerHTML = ''
+  var p = _quintoPickers[key] = { map: null, shape: null, mgr: null, key: key }
+  p.map = new google.maps.Map(el, {
+    center: { lat: -23.5505, lng: -46.6333 },
+    zoom: 11,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false
+  })
+  var shapeOpts = { fillColor: '#2196F3', fillOpacity: 0.15, strokeColor: '#2196F3', strokeWeight: 2, editable: true, draggable: true }
+  p.mgr = new google.maps.drawing.DrawingManager({
+    drawingControl: false,
+    rectangleOptions: shapeOpts
+  })
+  p.mgr.setMap(p.map)
+  google.maps.event.addListener(p.mgr, 'overlaycomplete', function(e) {
+    if(p.shape) p.shape.setMap(null)
+    p.shape = e.overlay
+    p.mgr.setDrawingMode(null)
+    _bindQuintoShapeListeners(p)
+    _updateQuintoBboxStatus(p)
+  })
+  // Pre-populate from initial bbox (e.g. when editing an existing search).
+  // Run on next paint so fitBounds has the final container size.
+  if(initialBbox) {
+    if(p.shape) p.shape.setMap(null)
+    p.shape = new google.maps.Rectangle({
+      bounds: { north: initialBbox.north, south: initialBbox.south, east: initialBbox.east, west: initialBbox.west },
+      map: p.map, editable: true, draggable: true,
+      fillColor: '#2196F3', fillOpacity: 0.15, strokeColor: '#2196F3', strokeWeight: 2
+    })
+    _bindQuintoShapeListeners(p)
+    var b = new google.maps.LatLngBounds(
+      { lat: initialBbox.south, lng: initialBbox.west },
+      { lat: initialBbox.north, lng: initialBbox.east }
+    )
+    // Map needs a resize + fitBounds after layout settles
+    google.maps.event.trigger(p.map, 'resize')
+    p.map.fitBounds(b)
+    setTimeout(function() {
+      google.maps.event.trigger(p.map, 'resize')
+      p.map.fitBounds(b)
+    }, 200)
+  } else if(p.shape) {
+    p.shape.setMap(null); p.shape = null
+  }
+  _updateQuintoBboxStatus(p)
+}
+
+function _bindQuintoShapeListeners(p) {
+  if(!p.shape) return
+  var update = function() { _updateQuintoBboxStatus(p) }
+  if(p.shape.getBounds) {
+    google.maps.event.addListener(p.shape, 'bounds_changed', update)
+    google.maps.event.addListener(p.shape, 'radius_changed', update)
+    google.maps.event.addListener(p.shape, 'center_changed', update)
+  } else if(p.shape.getPath) {
+    var path = p.shape.getPath()
+    google.maps.event.addListener(path, 'set_at', update)
+    google.maps.event.addListener(path, 'insert_at', update)
+    google.maps.event.addListener(path, 'remove_at', update)
+  }
+}
+
+function _quintoStartDrawing(key) {
+  var p = _quintoPickers[key]
+  if(!p || !p.mgr) { showAlertModal('Map not ready', 'Wait a moment for the map to load.'); return }
+  // Only rectangle is supported: QA's API takes a bbox, and the URL hash only
+  // encodes a bbox. A circle/polygon would round-trip lossily to a rectangle
+  // anyway on edit, which is confusing — so we skip the shape chooser and go
+  // straight to rectangle drawing.
+  if(p.shape) { p.shape.setMap(null); p.shape = null; _updateQuintoBboxStatus(p) }
+  p.mgr.setDrawingMode(google.maps.drawing.OverlayType.RECTANGLE)
+}
+
+function _quintoUseCurrentView(key) {
+  var p = _quintoPickers[key]
+  if(!p || !p.map) return
+  var b = p.map.getBounds()
+  if(!b) return
+  if(p.shape) p.shape.setMap(null)
+  p.shape = new google.maps.Rectangle({
+    bounds: b, map: p.map, editable: true, draggable: true,
+    fillColor: '#2196F3', fillOpacity: 0.15, strokeColor: '#2196F3', strokeWeight: 2
+  })
+  _bindQuintoShapeListeners(p)
+  _updateQuintoBboxStatus(p)
+}
+
+function _quintoClearBbox(key) {
+  var p = _quintoPickers[key]
+  if(!p) return
+  if(p.shape) { p.shape.setMap(null); p.shape = null }
+  _updateQuintoBboxStatus(p)
+}
+
+function _updateQuintoBboxStatus(p) {
+  var cfg = _qpCfg(p.key)
+  var bbox = getQuintoBbox(p.key)
+  if(bbox) {
+    var shapeName = p.shape && p.shape.getRadius ? 'circle'
+      : p.shape && p.shape.getPath && !p.shape.getBounds ? 'polygon'
+      : 'rectangle'
+    $('#' + cfg.statusId).removeClass('text-muted').addClass('text-success')
+      .text(shapeName + ' bbox ' + bbox.south.toFixed(3) + ',' + bbox.west.toFixed(3) + ' → ' + bbox.north.toFixed(3) + ',' + bbox.east.toFixed(3))
+    $('#' + cfg.clearBtnId).show()
+  } else {
+    $('#' + cfg.statusId).removeClass('text-success').addClass('text-muted')
+      .text('(no area set — search will use the whole region implied by the URL slug)')
+    $('#' + cfg.clearBtnId).hide()
+  }
+}
+
+// Compute bbox from any drawn shape: rectangle = native bounds; circle = bounds
+// of the inscribed lat/lng; polygon = min/max of vertex coords.
+function getQuintoBbox(key) {
+  var p = _quintoPickers[key || 'new']
+  if(!p || !p.shape) return null
+  if(p.shape.getBounds) {
+    var b = p.shape.getBounds()
+    if(!b) return null
+    var ne = b.getNorthEast(), sw = b.getSouthWest()
+    return { north: ne.lat(), east: ne.lng(), south: sw.lat(), west: sw.lng() }
+  }
+  if(p.shape.getPath) {
+    var north = -Infinity, south = Infinity, east = -Infinity, west = Infinity
+    p.shape.getPath().forEach(function(pt) {
+      var lat = pt.lat(), lng = pt.lng()
+      if(lat > north) north = lat
+      if(lat < south) south = lat
+      if(lng > east) east = lng
+      if(lng < west) west = lng
+    })
+    if(!isFinite(north)) return null
+    return { north: north, south: south, east: east, west: west }
+  }
+  return null
+}
+
+// Extract bbox from a URL's hash. Returns null if not present.
+function extractBboxFromUrl(url) {
+  try {
+    var u = new URL(url)
+    var m = (u.hash || '').match(/bbox=(-?\d+\.?\d*),(-?\d+\.?\d*),(-?\d+\.?\d*),(-?\d+\.?\d*)/)
+    if(!m) return null
+    return { south: Number(m[1]), west: Number(m[2]), north: Number(m[3]), east: Number(m[4]) }
+  } catch(e) { return null }
+}
+
+function applyBboxToUrl(url, bbox) {
+  try {
+    var u = new URL(url)
+    // Strip any existing #bbox=... and append fresh
+    var hash = (u.hash || '').replace(/(^|[#&])bbox=[^&]*/g, '').replace(/^#&?/, '#').replace(/^#$/, '')
+    var bboxStr = 'bbox=' + bbox.south.toFixed(6) + ',' + bbox.west.toFixed(6) + ',' + bbox.north.toFixed(6) + ',' + bbox.east.toFixed(6)
+    u.hash = hash ? hash + '&' + bboxStr : '#' + bboxStr
+    return u.toString()
+  } catch(e) { return url }
+}
+
+function parseQuintoAndarUrl(url) {
+  try {
+    var u = new URL(url)
+    if(!/quintoandar/.test(u.hostname)) return null
+    var info = {}
+
+    // Location from path: /comprar/imovel/sao-paulo-sp-brasil[/segment][/segment]...
+    var pathMatch = u.pathname.match(/\/(comprar|alugar)\/imovel\/([^/?#]+)((?:\/[^/?#]+)*)/)
+    if(!pathMatch) return null
+    info.businessContext = pathMatch[1] === 'alugar' ? 'For rent' : 'For sale'
+    info.location = decodeURIComponent(pathMatch[2])
+      .split('-').map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1) }).join(' ')
+
+    // QA encodes filters as path segments after the slug. Patterns observed:
+    //   2-quartos                       → bedrooms = 2
+    //   2-3-quartos                     → bedrooms = 2,3
+    //   0-1-2-3-vagas                   → parking = 0,1,2,3
+    //   de-55-a-1000-m2                 → area 55-1000 m²
+    //   de-150000-a-560000-venda        → price 150000-560000 (venda=sale)
+    //   de-1500-a-5000-aluguel          → rent price
+    //   ate-500000-venda                → up to 500000
+    //   apartamento|casa|studio|kitnet|cobertura → houseTypes
+    //   anything else                   → free-form tag (rua-silenciosa, varanda, ...)
+    var typeWords = ['apartamento','apartamentos','casa','casas','studio','studios','kitnet','kitnets','cobertura','coberturas','sobrado','sobrados']
+    var houseTypes = [], tags = []
+    var segs = (pathMatch[3] || '').split('/').filter(Boolean)
+    segs.forEach(function(seg) {
+      var s = decodeURIComponent(seg)
+      var m
+      if((m = s.match(/^((?:\d+-)*\d+)-quartos$/))) info.bedrooms = m[1].replace(/-/g, ',') + ' quartos'
+      else if((m = s.match(/^((?:\d+-)*\d+)-banheiros$/))) info.bathrooms = m[1].replace(/-/g, ',') + ' banheiros'
+      else if((m = s.match(/^((?:\d+-)*\d+)-vagas$/))) info.parking = m[1].replace(/-/g, ',') + ' vagas'
+      else if((m = s.match(/^de-(\d+)-a-(\d+)-m2$/))) info.area = m[1] + '–' + m[2] + ' m²'
+      else if((m = s.match(/^ate-(\d+)-m2$/))) info.area = 'até ' + m[1] + ' m²'
+      else if((m = s.match(/^a-partir-de-(\d+)-m2$/))) info.area = m[1] + '+ m²'
+      else if((m = s.match(/^de-(\d+)-a-(\d+)-(venda|aluguel)$/))) {
+        info.price = 'R$' + Number(m[1]).toLocaleString('pt-BR') + ' – R$' + Number(m[2]).toLocaleString('pt-BR')
+        info.businessContext = m[3] === 'aluguel' ? 'For rent' : 'For sale'
+      }
+      else if((m = s.match(/^ate-(\d+)-(venda|aluguel)$/))) {
+        info.price = 'Up to R$' + Number(m[1]).toLocaleString('pt-BR')
+        info.businessContext = m[2] === 'aluguel' ? 'For rent' : 'For sale'
+      }
+      else if((m = s.match(/^a-partir-de-(\d+)-(venda|aluguel)$/))) {
+        info.price = 'R$' + Number(m[1]).toLocaleString('pt-BR') + '+'
+        info.businessContext = m[2] === 'aluguel' ? 'For rent' : 'For sale'
+      }
+      else if(typeWords.indexOf(s) !== -1) houseTypes.push(s)
+      else tags.push(s.replace(/-/g, ' '))
+    })
+    if(houseTypes.length) info.houseTypes = houseTypes.join(', ')
+    if(tags.length) info.tags = tags.join(', ')
+
+    // Bbox override from hash (#bbox=south,west,north,east)
+    var bm = (u.hash || '').match(/bbox=(-?\d+\.?\d*),(-?\d+\.?\d*),(-?\d+\.?\d*),(-?\d+\.?\d*)/)
+    if(bm) info.bbox = 'bbox ' + Number(bm[1]).toFixed(3) + ',' + Number(bm[2]).toFixed(3)
+      + ' → ' + Number(bm[3]).toFixed(3) + ',' + Number(bm[4]).toFixed(3)
+
+    return info
+  } catch(e) { return null }
+}
+
+function formatQuintoAndarDetails(url) {
+  var info = parseQuintoAndarUrl(url)
+  if(!info) return ''
+  var parts = []
+  if(info.location) parts.push('<b>' + info.location + '</b>')
+  if(info.businessContext) parts.push(info.businessContext)
+  if(info.price) parts.push('<i class="fa fa-dollar"></i> ' + info.price)
+  if(info.bedrooms) parts.push('<i class="fa fa-bed"></i> ' + info.bedrooms)
+  if(info.bathrooms) parts.push(info.bathrooms)
+  if(info.parking) parts.push('<i class="fa fa-car"></i> ' + info.parking)
+  if(info.area) parts.push(info.area)
+  if(info.houseTypes) parts.push('<i class="fa fa-home"></i> ' + info.houseTypes)
+  if(info.tags) parts.push('<i class="fa fa-tag"></i> ' + info.tags)
+  if(info.bbox) parts.push('<i class="fa fa-map"></i> ' + info.bbox)
+  return parts.join(' &middot; ')
+}
+
 function formatAirbnbDetails(url) {
   var info = parseAirbnbUrl(url)
   if(!info) return ''
@@ -622,6 +1010,14 @@ var _searchesSort = null
 var _searchesFilterTimer = null
 var _searchesSelectedIds = {}
 var UNGROUPED_ID = '__ungrouped__'
+
+function _platformFromUrl(url) {
+  if(!url) return 'kijiji'
+  if(url.includes('quintoandar.com.br')) return 'quintoandar'
+  if(url.includes('airbnb')) return 'airbnb'
+  if(url.includes('facebook.com')) return 'facebook'
+  return 'kijiji'
+}
 
 function _loadCollapsedSearchGroups() {
   try { _collapsedSearchGroups = JSON.parse(localStorage.getItem('collapsedSearchGroups') || '{}') || {} }
@@ -981,8 +1377,8 @@ function renderSearchesTable() {
         return d === 'asc' ? va - vb : vb - va
       }
       if(f === 'platform') {
-        va = (a.platform || (a.url && a.url.includes('airbnb') ? 'airbnb' : a.url && a.url.includes('facebook.com') ? 'facebook' : 'kijiji'))
-        vb = (b.platform || (b.url && b.url.includes('airbnb') ? 'airbnb' : b.url && b.url.includes('facebook.com') ? 'facebook' : 'kijiji'))
+        va = (a.platform || _platformFromUrl(a.url))
+        vb = (b.platform || _platformFromUrl(b.url))
       } else {
         va = (a[f] || '').toString().toLowerCase()
         vb = (b[f] || '').toString().toLowerCase()
@@ -1072,17 +1468,25 @@ function _appendJobRows($tbody, jobs, groupId) {
         default: statusDom = '<td></td>'
       }
     }
-    let platform = job.platform || (job.url && job.url.includes('airbnb') ? 'airbnb' : job.url && job.url.includes('facebook.com') ? 'facebook' : 'kijiji')
+    let platform = job.platform || _platformFromUrl(job.url)
     let platformLabel = platform === 'airbnb'
       ? '<td><span class="label label-danger">Airbnb</span></td>'
       : platform === 'facebook'
       ? '<td><span class="label label-primary">Facebook</span></td>'
+      : platform === 'quintoandar'
+      ? '<td><span class="label label-warning">Quinto Andar</span></td>'
       : '<td><span class="label label-info">Kijiji</span></td>'
-    let linkLabel = platform === 'airbnb' ? 'Airbnb Link' : platform === 'facebook' ? 'FB Marketplace Link' : 'Kijiji Link'
+    let linkLabel = platform === 'airbnb' ? 'Airbnb Link'
+      : platform === 'facebook' ? 'FB Marketplace Link'
+      : platform === 'quintoandar' ? 'Quinto Andar Link'
+      : 'Kijiji Link'
     let descriptionHtml = job.description
     if(platform === 'airbnb') {
       let airbnbDetails = formatAirbnbDetails(job.url)
       if(airbnbDetails) descriptionHtml = airbnbDetails + (job.description ? '<br><small class="text-muted">' + job.description + '</small>' : '')
+    } else if(platform === 'quintoandar') {
+      let qaDetails = formatQuintoAndarDetails(job.url)
+      if(qaDetails) descriptionHtml = qaDetails + (job.description ? '<br><small class="text-muted">' + job.description + '</small>' : '')
     }
     let isQueued = !!(job.queuedAt && job.statusCode !== 2)
     let stopBtnHtml = ''
@@ -1096,6 +1500,7 @@ function _appendJobRows($tbody, jobs, groupId) {
         <td><input type="checkbox" class="searchSelectCb" data-jobid="${job.id}" data-jobname="${job.name}" data-groupid="${groupId}"${checkedAttr}></td>
         <td><button type="button" class="btn btn-primary editSearchBtn BStooltip" rel="tooltip" data-placement="top" title="edit" data-toggle="modal" data-target="#editSearchModal"><i class="fa fa-edit"></i></button>
         ${stopBtnHtml}
+        <button type="button" class="btn btn-info refetchPhotosBtn BStooltip" rel="tooltip" data-placement="top" title="Re-scrape listings with no photos"><i class="fa fa-camera"></i></button>
         <button type="button" class="btn btn-danger delSearchBtn BStooltip" rel="tooltip" data-placement="top" title="delete"><i class="fa fa-trash"></i></button>
         </td>
         ${platformLabel}
@@ -1107,6 +1512,7 @@ function _appendJobRows($tbody, jobs, groupId) {
       </tr>
     `)
     $('#searchesTBody .editSearchBtn').last().data('id', job.id).data('name', $.parseHTML(job.name || ' ')[0].data).data('url', job.url).data('description', $.parseHTML(job.description || ' ')[0].data).data('platform', platform).data('gridDepth', job.gridDepth || 1).data('groupId', job.groupId || '')
+    $('#searchesTBody .refetchPhotosBtn').last().data('id', job.id).data('name', job.name)
     $('#searchesTBody .delSearchBtn').last().data('id', job.id)
     if(stopBtnHtml)
       $('#searchesTBody .stopSearchBtn').last().data('id', job.id).data('name', job.name)

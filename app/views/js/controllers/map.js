@@ -301,7 +301,7 @@ function openPhotoGallery(data)
       html += '<h3 class="gallery-cat-title">'+cat+'</h3>'
       html += '<div class="gallery-cat-grid">'
       multiCats[cat].forEach(function(url) {
-        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
+        html += '<img class="gallery-thumb" src="'+upgradeQaImageUrl(url, 'auto')+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
       })
       html += '</div></div>'
     })
@@ -315,7 +315,7 @@ function openPhotoGallery(data)
       singleKeys.forEach(function(cat) {
         var url = singleCats[cat][0]
         html += '<div class="gallery-thumb-labeled">'
-        html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
+        html += '<img class="gallery-thumb" src="'+upgradeQaImageUrl(url, 'auto')+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
         html += '<span class="gallery-thumb-label">'+cat+'</span>'
         html += '</div>'
       })
@@ -323,12 +323,54 @@ function openPhotoGallery(data)
     }
   } else {
     urls.forEach(function(url){
-      html += '<img class="gallery-thumb" src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
+      html += '<img class="gallery-thumb" src="'+upgradeQaImageUrl(url, 'auto')+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
     })
   }
   $('#photoGalleryContent').html(html)
-  $('#photoGalleryOverlay').fadeIn(200)
+  // Reset scroll AFTER making the element displayable — scrollTop is a no-op
+  // on display:none elements, so fadeIn alone would let the previous scroll
+  // position persist.
+  $('#photoGalleryOverlay').css({display:'block', opacity:0}).scrollTop(0).animate({opacity:1}, 200)
   $('body').css('overflow','hidden')
+  _applyGalleryThumbScale()
+}
+
+// --- Gallery thumbnail zoom (grid view, separate from single-image zoom) ---
+var _galleryThumbScale = (function() {
+  var s = parseFloat(localStorage.getItem('galleryThumbScale'))
+  return isFinite(s) && s > 0 ? s : 1
+})()
+var GALLERY_THUMB_BASE = 200  // matches CSS grid-template-columns minmax base
+var GALLERY_THUMB_MIN = 0.5
+var GALLERY_THUMB_MAX = 4
+var GALLERY_THUMB_STEP = 0.25
+
+function _applyGalleryThumbScale()
+{
+  var size = Math.round(GALLERY_THUMB_BASE * _galleryThumbScale)
+  var height = Math.round(200 * _galleryThumbScale)
+  $('#photoGalleryContent, .gallery-cat-grid').css('grid-template-columns', 'repeat(auto-fill, minmax(' + size + 'px, 1fr))')
+  $('#photoGalleryOverlay img.gallery-thumb').css('height', height + 'px')
+  $('#galleryThumbZoomLevel').text(Math.round(_galleryThumbScale * 100) + '%')
+  localStorage.setItem('galleryThumbScale', String(_galleryThumbScale))
+}
+
+function galleryThumbZoomIn()
+{
+  _galleryThumbScale = Math.min(GALLERY_THUMB_MAX, +(_galleryThumbScale + GALLERY_THUMB_STEP).toFixed(2))
+  _applyGalleryThumbScale()
+}
+
+function galleryThumbZoomOut()
+{
+  _galleryThumbScale = Math.max(GALLERY_THUMB_MIN, +(_galleryThumbScale - GALLERY_THUMB_STEP).toFixed(2))
+  _applyGalleryThumbScale()
+}
+
+function galleryThumbZoomReset()
+{
+  _galleryThumbScale = 1
+  _applyGalleryThumbScale()
 }
 
 function closePhotoGallery()
@@ -336,6 +378,36 @@ function closePhotoGallery()
   closePhotoZoom()
   $('#photoGalleryOverlay').fadeOut(200)
   $('body').css('overflow','')
+}
+
+// QA's CDN encodes size as a path segment: /img/{size}/{file}. We rewrite
+// scraped URLs to whatever quality the user has chosen in settings (default
+// 'xxl'). The single-image zoom forces 'original' for max resolution.
+function getQaImageSize() {
+  return localStorage.getItem('qaImageSize') || 'xxl'
+}
+
+function setQaImageSize(size) {
+  if(!size) return
+  localStorage.setItem('qaImageSize', size)
+  // Refresh any currently-rendered images so the change takes effect immediately.
+  $('img').each(function() {
+    var src = this.src || this.getAttribute('data-src') || ''
+    if(src.indexOf('quintoandar.com.br/img/') === -1) return
+    var newSrc = upgradeQaImageUrl(src, size)
+    if(newSrc !== src) {
+      if(this.src) this.src = newSrc
+      if(this.getAttribute('data-src')) this.setAttribute('data-src', newSrc)
+    }
+  })
+}
+
+function upgradeQaImageUrl(url, target) {
+  if(typeof url !== 'string' || url.indexOf('quintoandar.com.br/img/') === -1) return url
+  // 'auto' (or omitted) → user's preferred size from settings
+  if(!target || target === 'auto') target = getQaImageSize()
+  if(target === 'original') return url.replace(/\/img\/[a-z0-9]+\//i, '/img/')
+  return url.replace(/\/img\/[a-z0-9]+\//i, '/img/' + target + '/')
 }
 
 var _photoZoomUrls = []
@@ -378,7 +450,9 @@ function openPhotoZoom(srcOrEl, listEl)
 
 function _showPhotoZoom()
 {
-  var src = _photoZoomUrls[_photoZoomIndex] || ''
+  // Upgrade to the original (no-size) variant for QA URLs — the gallery uses xxl
+  // for fast scrolling but here we want max resolution.
+  var src = upgradeQaImageUrl(_photoZoomUrls[_photoZoomIndex] || '', 'original')
   $('#photoGalleryZoomImg').attr('src', src)
   _applyPhotoZoomScale()
   var total = _photoZoomUrls.length
@@ -391,9 +465,13 @@ function _showPhotoZoom()
 function _applyPhotoZoomScale()
 {
   var pct = Math.round(_photoZoomScale * 100)
+  // Use width/height (not max-*) so the IMG box grows past the source's
+  // intrinsic size. object-fit:contain (set in CSS) keeps aspect ratio.
   $('#photoGalleryZoomImg').css({
-    'max-width': (95 * _photoZoomScale) + 'vw',
-    'max-height': (95 * _photoZoomScale) + 'vh'
+    'width': (95 * _photoZoomScale) + 'vw',
+    'height': (95 * _photoZoomScale) + 'vh',
+    'max-width': 'none',
+    'max-height': 'none'
   })
   $('#photoZoomLevel').text(pct + '%')
 }

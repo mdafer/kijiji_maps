@@ -167,8 +167,8 @@ app.get('/emitTest', function(req, res, next){
 
 app.put('/job', [
   		check('name').trim().escape().isLength({ min: 1 }),
-  		check('url').exists().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com']})),
-  		check('platform').optional().trim().escape().isIn(['kijiji', 'airbnb', 'facebook']),
+  		check('url').exists().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com','www.quintoandar.com.br','quintoandar.com.br']})),
+  		check('platform').optional().trim().escape().isIn(['kijiji', 'airbnb', 'facebook', 'quintoandar']),
   		check('description').trim().escape(),
   		check('fetchDetails').optional().toBoolean(),
   		check('fetchAvailability').optional().toBoolean(),
@@ -180,7 +180,7 @@ app.put('/job', [
 app.patch('/job', [
 		check('id').exists(),
 		check('name').optional().trim().escape(),
-  		check('url').optional().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com']})),
+  		check('url').optional().isLength({ min: 20 }).custom(v => validator.isURL(v, {protocols: ['https'],require_protocol:true, host_whitelist:['www.kijiji.ca','kijiji.ca','www.airbnb.ca','airbnb.ca','www.airbnb.com','airbnb.com','www.facebook.com','facebook.com','www.quintoandar.com.br','quintoandar.com.br']})),
   		check('description').optional().trim().escape(),
   		check('groupId').optional({nullable:true, checkFalsy:false}).trim().escape()
 	],function(req, res, next){
@@ -198,6 +198,12 @@ app.post('/resetJob', [
   		check('gridDepth').optional().isInt({min:1, max:4}).toInt()
 	], function(req, res, next) {
 	Helpers.router.finish(req, res, Controllers.jobs.resetJob);
+});
+
+app.post('/refetchMissingPhotos', [
+		check('jobId').exists()
+	], function(req, res, next) {
+	Helpers.router.finish(req, res, Controllers.jobs.refetchMissingPhotos);
 });
 
 app.post('/deleteJob', [

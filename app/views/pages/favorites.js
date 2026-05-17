@@ -23,7 +23,7 @@ function favoritesfunc() {
   $('#pac-input').hide()
   $('#shareViewBtn').hide()
 
-  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
+  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body', placement: 'auto bottom' })
 
   // Populate job checkboxes
   APIgetProfile(null, function(user){

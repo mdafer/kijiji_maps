@@ -25,9 +25,29 @@ function APIaddNewSearch(params, callback=null)
 	});
 }
 
+function APIrefetchMissingPhotos(jobId, callback=null)
+{
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        contentType: "application/json",
+        url: apiURL+'refetchMissingPhotos',
+        data: JSON.stringify({jobId: jobId}),
+        beforeSend: function(xhr){xhr.setRequestHeader('Authorization', $.parseJSON(localStorage.user).token);},
+        success: function(data){
+            if(callback)
+                callback(data.meta);
+        },
+        error: function (err) {
+            alert(err.responseJSON && err.responseJSON.msg || 'Failed to start photo refetch');
+            console.log(err.responseJSON);
+        }
+    });
+}
+
 function APIresetJob(params, callback=null)
 {
-    $.ajax({ 
+    $.ajax({
         type: "POST",
         dataType: "json",
         contentType: "application/json",

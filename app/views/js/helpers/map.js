@@ -42,7 +42,11 @@ function updateMarkerIconForListing(listingId) {
 function buildPopupHtml(listing) {
   var isAirbnb = listing.platform === 'airbnb'
   var isFacebook = listing.platform === 'facebook'
-  var visitLabel = isAirbnb ? 'Visit on Airbnb' : isFacebook ? 'Visit on Facebook' : 'Visit on Kijiji'
+  var isQuintoAndar = listing.platform === 'quintoandar'
+  var visitLabel = isAirbnb ? 'Visit on Airbnb'
+    : isFacebook ? 'Visit on Facebook'
+    : isQuintoAndar ? 'Visit on Quinto Andar'
+    : 'Visit on Kijiji'
   var visitUrl = isFacebook ? 'https://www.facebook.com/marketplace/item/' + listing.facebookId + '/' : listing.url
   var html = '<div style="max-width:220px">'
 
@@ -51,11 +55,13 @@ function buildPopupHtml(listing) {
 
   html += '<h4>'+listing.title+'</h4><h4>$'+getDisplayPrice(listing)+'</h4>'
 
-  if(isAirbnb || isFacebook) {
+  if(isAirbnb || isFacebook || isQuintoAndar) {
     var parts = []
     if(listing.bedrooms) parts.push(listing.bedrooms + ' bd')
     if(listing.beds) parts.push(listing.beds + ' beds')
     if(listing.bathrooms) parts.push(listing.bathrooms + ' ba')
+    if(listing.area) parts.push(listing.area + ' m²')
+    if(listing.parkingSpaces) parts.push(listing.parkingSpaces + ' parking')
     if(parts.length) html += '<p style="margin:2px 0;font-size:12px">'+parts.join(' &middot; ')+'</p>'
 
     if(listing.categories && listing.categories.length)
@@ -73,8 +79,8 @@ function buildPopupHtml(listing) {
       if(listing.amenityIdMap) Object.assign(_amenityIdMap, listing.amenityIdMap)
     }
 
-    // Photo gallery — use facebookId or airbnbId as lookup key
-    var listingLookupId = listing.airbnbId || listing.facebookId
+    // Photo gallery — use facebookId / airbnbId / quintoandarId as lookup key
+    var listingLookupId = listing.airbnbId || listing.facebookId || listing.quintoandarId
     var pics = listing.picture_urls || []
     if(pics.length > 1 && listingLookupId)
       html += '<button class="btn btn-xs btn-info" style="margin:4px 0;width:100%" onclick="openPhotoGallery(getListingPhotosData(\''+listingLookupId+'\'))">Photos ('+pics.length+')</button>'
@@ -96,6 +102,10 @@ function buildPopupHtml(listing) {
   html += '<button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
   html += '<button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   html += '<a onclick="markAsViewed(null, \''+listing.url+'\')" href="'+visitUrl+'" target="_blank">'+visitLabel+'</a>'
+  var seenColor = visitedUrls && visitedUrls.includes(listing.url) ? '#27ae60' : '#ccc'
+  html += '<button class="btn btn-xs" data-url="'+listing.url.replace(/"/g,'&quot;')+'" onclick="toggleSeenBtn(this)" title="Toggle seen/unseen"><i class="fa fa-eye" style="color:'+seenColor+'"></i></button>'
+  if(listing.lat && listing.lon)
+    html += '<a class="btn btn-xs btn-default" href="https://www.google.com/maps/search/?api=1&query='+listing.lat+','+listing.lon+'" target="_blank" title="Open in Google Maps"><i class="fa fa-external-link"></i> GMaps</a>'
   html += '</div>'
   html += '<button class="btn btn-xs btn-default" style="margin:2px 0;width:100%" onclick="viewInList(\''+listing._id+'\')"><i class="fa fa-list"></i> View in list</button>'
   html += '</div>'
@@ -132,7 +142,7 @@ function scrollToFocusedListing() {
 }
 
 function getListingById(id) {
-  var m = _markers.find(function(mk){ return mk.listingData && (mk.listingData.airbnbId === id || mk.listingData.facebookId === id) })
+  var m = _markers.find(function(mk){ return mk.listingData && (mk.listingData.airbnbId === id || mk.listingData.facebookId === id || mk.listingData.quintoandarId === id) })
   return m ? m.listingData : null
 }
 
@@ -149,12 +159,16 @@ function setMarkersByListings(map, listings, centerLocation = false) {
   if(centerLocation)
     centerMapLocation(listings[0].lat, listings[0].lon)
   listings.forEach(listing=> {
+    // Honor the active shape filter on creation — otherwise listings added
+    // after the shape was drawn slip through visible until the next refresh.
+    var insideShape = !hasActiveShapeFilter() || isInsideShapeFilter(listing.lat, listing.lon)
     var marker = new google.maps.Marker({
       position: new google.maps.LatLng(listing.lat, listing.lon),
-      icon: getMarkerIconForListing(listing), map: map, title: listing.address, url: listing.url
+      icon: getMarkerIconForListing(listing), map: insideShape ? map : null, title: listing.address, url: listing.url
     });
     marker.listingData = listing
     _markers.push(marker)
+    if(!insideShape) _markersHiddenByShape.push(marker)
 
     if(listing.amenities) listing.amenities.forEach(function(a){ _allAmenities.add(a) })
     if(listing.amenityIdMap) Object.assign(_amenityIdMap, listing.amenityIdMap)
@@ -185,11 +199,37 @@ function markAsViewed(marker, url)
   localStorage.setItem('visitedUrls'+jobId, JSON.stringify(visitedUrls))
   if(!marker)
     marker = _markers.find(marker => {return marker.url === url})
+  if(!marker) return true
   var listingIsFavorite = typeof isFavorite === 'function' && marker.listingData && isFavorite(marker.listingData._id)
   if(localStorage.getItem('hideMarkers')=='true' && !listingIsFavorite)
     marker.setMap(null);
   marker.setIcon(getMarkerIconForListing(marker.listingData))
   return true
+}
+
+function markAsUnviewed(marker, url)
+{
+  var idx = visitedUrls.indexOf(url)
+  if(idx === -1) return false
+  visitedUrls.splice(idx, 1)
+  localStorage.setItem('visitedUrls'+jobId, JSON.stringify(visitedUrls))
+  if(!marker)
+    marker = _markers.find(marker => {return marker.url === url})
+  if(!marker) return true
+  // Re-show the marker if it had been hidden by the "hide viewed" toggle
+  if(!marker.getMap() && map) marker.setMap(map)
+  marker.setIcon(getMarkerIconForListing(marker.listingData))
+  return true
+}
+
+function toggleSeenBtn(btn)
+{
+  var url = $(btn).data('url')
+  if(visitedUrls.includes(url)) markAsUnviewed(null, url)
+  else markAsViewed(null, url)
+  // Update the icon color in place
+  var seen = visitedUrls.includes(url)
+  $(btn).find('i').css('color', seen ? '#27ae60' : '#ccc')
 }
 
 function getViewedMarkers(markers=null)

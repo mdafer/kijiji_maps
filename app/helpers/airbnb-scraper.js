@@ -965,5 +965,57 @@ module.exports = {
 			    await Helpers.common.sleep(requestErrorDelay())
 			}
 		}
+	},
+
+	// Refetch photos for Airbnb ads in the job with no/few pictures.
+	refetchMissingPhotos: async function(params, callback = null) {
+		const jobId = params.jobId
+		Helpers.logger.log({print: `Refetching photos for Airbnb ads in job ${jobId} with no pictures...`, channels: jobId+'jobUpdate'})
+		const query = {
+			['jobs.'+jobId]: { $exists: true },
+			platform: 'airbnb',
+			$or: [
+				{ picture_urls: { $exists: false } },
+				{ picture_urls: { $size: 0 } },
+				{ picture_urls: { $size: 1 } }
+			]
+		}
+		const ads = await params.db.get('ads').find(query)
+		if (!ads.length) {
+			Helpers.logger.log({print: `No Airbnb ads need photo refetch.`, channels: jobId+'jobUpdate'})
+			if (callback) callback(null, 0)
+			return 0
+		}
+		Helpers.logger.log({print: `Found ${ads.length} Airbnb ads needing photos.`, channels: jobId+'jobUpdate'})
+		let updated = 0, missing = 0
+		for (let i = 0; i < ads.length; i++) {
+			const ad = ads[i]
+			const id = ad.airbnbId
+			if (!id) continue
+			try {
+				const details = await fetchListingDetails(id, ad.bookingParams || null)
+				if (details && details.picture_urls && details.picture_urls.length > 1) {
+					const upd = {
+						picture_url: details.picture_urls[0],
+						picture_urls: details.picture_urls,
+						photo_categories: details.photo_categories || null
+					}
+					if (details.amenities && details.amenities.length) upd.amenities = details.amenities
+					if (details.amenityIdMap) upd.amenityIdMap = details.amenityIdMap
+					await params.db.get('ads').update({_id: ad._id}, {$set: upd})
+					updated++
+				} else {
+					missing++
+				}
+			} catch(e) {
+				Helpers.logger.log({print: `Refetch failed for ${id}: ${e.message}`, channels: jobId+'jobWarning'})
+			}
+			if ((i + 1) % 10 === 0)
+				Helpers.logger.log({print: `Progress: ${i + 1}/${ads.length} processed, ${updated} updated, ${missing} still missing`, channels: jobId+'jobUpdate'})
+			await Helpers.common.sleep(humanDelay())
+		}
+		Helpers.logger.log({print: `Photo refetch done: ${updated} updated, ${missing} still missing, ${ads.length} scanned.`, channels: jobId+'jobUpdate'})
+		if (callback) callback(null, updated)
+		return updated
 	}
 }

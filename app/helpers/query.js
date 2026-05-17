@@ -43,14 +43,39 @@ module.exports = {
 		if(vars.minBeds)
 			myfilter.$and.push({beds:{$gte:Number(vars.minBeds)}})
 
+		// Different scrapers use different field names: FB uses sqMeters/parking,
+		// QA uses area/parkingSpaces. Match either so the filter works across platforms.
 		if(vars.minSqMeters)
-			myfilter.$and.push({sqMeters:{$gte:Number(vars.minSqMeters)}})
+			myfilter.$and.push({$or:[
+				{sqMeters:{$gte:Number(vars.minSqMeters)}},
+				{area:{$gte:Number(vars.minSqMeters)}}
+			]})
 
 		if(vars.minParking)
-			myfilter.$and.push({parking:{$gte:Number(vars.minParking)}})
+			myfilter.$and.push({$or:[
+				{parking:{$gte:Number(vars.minParking)}},
+				{parkingSpaces:{$gte:Number(vars.minParking)}}
+			]})
 
-		if(vars.propertyType)
-			myfilter.$and.push({propertyType:{$regex: new RegExp('^' + vars.propertyType + '$', 'i')}})
+		// FB stores English propertyType ("apartment", "house", …); QA stores
+		// `type` with Portuguese names. Map the UI's English value to a regex
+		// that matches either field across both languages.
+		if(vars.propertyType) {
+			const ptMap = {
+				apartment: ['apartment', 'apartamento'],
+				house: ['house', 'casa', 'sobrado'],
+				condo: ['condo', 'cobertura'],
+				townhouse: ['townhouse'],
+				studio: ['studio', 'kitnet'],
+				room: ['room', 'quarto']
+			}
+			const alts = ptMap[String(vars.propertyType).toLowerCase()] || [vars.propertyType]
+			const pattern = '^(' + alts.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')$'
+			myfilter.$and.push({$or: [
+				{propertyType: {$regex: new RegExp(pattern, 'i')}},
+				{type: {$regex: new RegExp(pattern, 'i')}}
+			]})
+		}
 
 		if(vars.categorySearch)
 			myfilter.$and.push({categories:{$regex: new RegExp(vars.categorySearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')}})

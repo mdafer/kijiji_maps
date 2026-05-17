@@ -195,5 +195,10 @@ module.exports = {
 			    await Helpers.common.sleep(requestErrorDelay);
 			}
 		}
+	},
+	refetchMissingPhotos: async function(params, callback = null) {
+		Helpers.logger.log({print: 'Photo refetch not yet implemented for Kijiji. Re-run the full search instead.', channels: params.jobId+'jobWarning'})
+		if (callback) callback(null, 0)
+		return 0
 	}
 }

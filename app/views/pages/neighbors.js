@@ -23,8 +23,7 @@ var neighborspage= `<!-- Content Header (Page header) -->
           <!-- Profile Image -->
           <div class="box box-primary">
             <div class="box-body box-profile">
-              <img class="profile-user-img img-responsive img-circle" src="images/user2-160x160.jpg" alt="User profile picture">
-              <h3 class="profile-username text-center">Denise Marie</h3>
+<h3 class="profile-username text-center">Denise Marie</h3>
               <p class="text-muted text-center">Software Engineer</p>
               <a href="#" class="btn btn-primary btn-block"><b>Follow</b></a>
             </div>
@@ -94,8 +93,7 @@ function testneighborsfunc()
           <!-- Profile Image -->
           <div class="box box-primary">
             <div class="box-body box-profile">
-              <img class="profile-user-img img-responsive img-circle" src="images/user2-160x160.jpg" alt="User profile picture">
-              <h3 class="profile-username text-center">Nina Mcintire</h3>
+<h3 class="profile-username text-center">Nina Mcintire</h3>
               <p class="text-muted text-center">Software Engineer</p>
               <a href="#" class="btn btn-primary btn-block"><b>Follow</b></a>
             </div>

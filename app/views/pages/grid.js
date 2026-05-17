@@ -53,7 +53,7 @@ function gridfunc() {
     if(user) _savedHideAmenities = parseAmenityList(user.hideAmenities)
   })
 
-  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body' })
+  $(".BStooltip").tooltip({ trigger: 'hover', container: 'body', placement: 'auto bottom' })
 
   $('#filtersModal').on('show.bs.modal', function(){ updateAmenityBubbles() })
 
@@ -107,6 +107,10 @@ function _applySort() {
     if(field === 'price') {
       va = parseFloat(getDisplayPrice(a)) || 0
       vb = parseFloat(getDisplayPrice(b)) || 0
+    } else if(field === 'm2') {
+      // QA stores area; FB stores sqMeters
+      va = Number(a.area || a.sqMeters) || 0
+      vb = Number(b.area || b.sqMeters) || 0
     } else {
       va = a._id ? parseInt(a._id.substring(0, 8), 16) : 0
       vb = b._id ? parseInt(b._id.substring(0, 8), 16) : 0
@@ -121,7 +125,9 @@ function updateSortLabel() {
     'price_asc':  'Price: Low→High',
     'price_desc': 'Price: High→Low',
     'date_desc':  'Date: Newest',
-    'date_asc':   'Date: Oldest'
+    'date_asc':   'Date: Oldest',
+    'm2_asc':     'm²: Small→Large',
+    'm2_desc':    'm²: Large→Small'
   }
   $('#sortLabel').text(labels[_currentSort.field + '_' + _currentSort.dir] || 'Sort')
 }
@@ -246,6 +252,11 @@ function buildCardHtml(listing) {
   if(listing.bedrooms) details.push(listing.bedrooms + ' bd')
   if(listing.bathrooms) details.push(listing.bathrooms + ' ba')
   if(listing.beds) details.push(listing.beds + ' beds')
+  // QA stores area; FB stores sqMeters
+  var m2 = listing.area || listing.sqMeters
+  if(m2) details.push(m2 + ' m²')
+  var pk = listing.parkingSpaces != null ? listing.parkingSpaces : listing.parking
+  if(pk) details.push(pk + ' parking')
 
   var amenityHtml = ''
   if(listing.amenities && listing.amenities.length) {
@@ -276,7 +287,7 @@ function buildCardHtml(listing) {
     else html += '      <button class="btn btn-xs btn-default" style="opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i></button>'
   }
   if(listing.lat && listing.lon) html += '      <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+listing.lat+','+listing.lon+',\''+listing.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
-  html += '      <a class="btn btn-xs btn-success" href="'+listing.url+'" target="_blank" title="Open Airbnb listing"><i class="fa fa-external-link"></i></a>'
+  html += '      <a class="btn btn-xs btn-success" href="'+listing.url+'" target="_blank" title="Open listing"><i class="fa fa-external-link"></i></a>'
   html += '    </div>'
   html += '  </div>'
   html += '</div>'
@@ -288,6 +299,11 @@ function buildRowHtml(listing) {
   if(listing.bedrooms) details.push(listing.bedrooms + ' bd')
   if(listing.bathrooms) details.push(listing.bathrooms + ' ba')
   if(listing.beds) details.push(listing.beds + ' beds')
+  // QA stores area; FB stores sqMeters
+  var m2 = listing.area || listing.sqMeters
+  if(m2) details.push(m2 + ' m²')
+  var pk = listing.parkingSpaces != null ? listing.parkingSpaces : listing.parking
+  if(pk) details.push(pk + ' parking')
 
   var pics = listing.picture_urls || []
   if(!pics.length && listing.picture_url) pics = [listing.picture_url]
@@ -309,7 +325,7 @@ function buildRowHtml(listing) {
       imagesHtml += '<div class="grid-row-cat-title">'+cat+'</div>'
       imagesHtml += '<div class="grid-row-images">'
       multiCats[cat].forEach(function(url) {
-        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
+        imagesHtml += '<img class="grid-row-img" data-src="'+(typeof upgradeQaImageUrl === 'function' ? upgradeQaImageUrl(url, 'auto') : url)+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
       })
       imagesHtml += '</div></div>'
     })
@@ -321,7 +337,7 @@ function buildRowHtml(listing) {
       singleKeys.forEach(function(cat) {
         var url = singleCats[cat][0]
         imagesHtml += '<div class="grid-row-img-labeled">'
-        imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
+        imagesHtml += '<img class="grid-row-img" data-src="'+(typeof upgradeQaImageUrl === 'function' ? upgradeQaImageUrl(url, 'auto') : url)+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
         imagesHtml += '<span class="grid-row-img-label">'+cat+'</span>'
         imagesHtml += '</div>'
       })
@@ -331,7 +347,7 @@ function buildRowHtml(listing) {
   } else {
     imagesHtml = '<div class="grid-row-images-wrap"><div class="grid-row-images">'
     pics.forEach(function(url) {
-      imagesHtml += '<img class="grid-row-img" data-src="'+url+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
+      imagesHtml += '<img class="grid-row-img" data-src="'+(typeof upgradeQaImageUrl === 'function' ? upgradeQaImageUrl(url, 'auto') : url)+'" referrerpolicy="no-referrer" onclick="openPhotoZoom(this)">'
     })
     imagesHtml += '</div></div>'
   }
@@ -357,16 +373,26 @@ function buildRowHtml(listing) {
   var favColor = isFavorite(listing._id) ? '#e74c3c' : '#ccc'
   var disColor = isDisliked(listing._id) ? '#34495e' : '#ccc'
   html += '    '+amenityHtml
-  html += '    <button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite" style="margin-left:8px"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
-  html += '    <button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike" style="margin-left:4px"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
+  // Action buttons live in a single flex item that takes the full row width,
+  // forcing the wrap and giving us direct control over the row spacing via
+  // negative margin-top (which the flex parent's gap:8px would otherwise enforce).
+  html += '    <div class="grid-row-actions" style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:4px;margin-top:-4px">'
+  html += '<button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleFavoriteBtn(this)" title="Toggle favorite"><i class="fa fa-heart" style="color:'+favColor+'"></i></button>'
+  html += '<button class="btn btn-xs" data-listingid="'+listing._id+'" onclick="toggleDislikeBtn(this)" title="Toggle dislike"><i class="fa fa-thumbs-down" style="color:'+disColor+'"></i></button>'
   var totalPics = (listing.picture_urls && listing.picture_urls.length) || (listing.picture_url ? 1 : 0)
-  if(totalPics > 0) html += '    <button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridListingPhotos(\''+listing._id+'\'))" title="Photo slideshow" style="margin-left:4px"><i class="fa fa-camera"></i> '+totalPics+'</button>'
+  if(totalPics > 0) html += '<button class="btn btn-xs btn-info" onclick="openPhotoGallery(gridListingPhotos(\''+listing._id+'\'))" title="Photo slideshow"><i class="fa fa-camera"></i> '+totalPics+'</button>'
   if(listing.platform === 'airbnb') {
-    if(listing.availability) html += '    <button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+listing._id+'\')" title="Show 12-month availability" style="margin-left:4px"><i class="fa fa-calendar"></i> Availability</button>'
-    else html += '    <button class="btn btn-xs btn-default" style="margin-left:4px;opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
+    if(listing.availability) html += '<button class="btn btn-xs btn-warning" onclick="openAvailabilityCalendar(\''+listing._id+'\')" title="Show 12-month availability"><i class="fa fa-calendar"></i> Availability</button>'
+    else html += '<button class="btn btn-xs btn-default" style="opacity:0.6" disabled title="Availability data not yet fetched. Refresh listing to update."><i class="fa fa-calendar-o"></i> Availability</button>'
   }
-  if(listing.lat && listing.lon) html += '    <button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+listing.lat+','+listing.lon+',\''+listing.title.replace(/'/g,"\\'")+'\')})" title="Show on map" style="margin-left:4px"><i class="fa fa-map-marker"></i> Map</button>'
-  html += '    <a class="btn btn-xs btn-success" href="'+listing.url+'" target="_blank" style="margin-left:4px"><i class="fa fa-external-link"></i> Airbnb</a>'
+  if(listing.lat && listing.lon) html += '<button class="btn btn-xs btn-info" onclick="googleMapsReady.then(function(){openListingMapPopup('+listing.lat+','+listing.lon+',\''+listing.title.replace(/'/g,"\\'")+'\')})" title="Show on map"><i class="fa fa-map-marker"></i> Map</button>'
+  if(listing.lat && listing.lon) html += '<a class="btn btn-xs btn-default" href="https://www.google.com/maps/search/?api=1&query='+listing.lat+','+listing.lon+'" target="_blank" title="Open in Google Maps"><i class="fa fa-external-link"></i> GMaps</a>'
+  var visitLabel = listing.platform === 'airbnb' ? 'Airbnb'
+    : listing.platform === 'facebook' ? 'Facebook'
+    : listing.platform === 'quintoandar' ? 'Quinto Andar'
+    : 'Visit'
+  html += '<a class="btn btn-xs btn-success" href="'+listing.url+'" target="_blank"><i class="fa fa-external-link"></i> '+visitLabel+'</a>'
+  html += '</div>'
   html += '  </div>'
   html += '  <div class="grid-row-body">'+imagesHtml+'</div>'
   html += '</div>'

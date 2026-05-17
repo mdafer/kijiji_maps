@@ -48,14 +48,6 @@ function renderpage(params={})
 		let myUser = $.parseJSON(localStorage.user)
 		userId=myUser._id
 		myUser.fullName = myUser.firstName+' '+myUser.lastName
-		if(myUser.profile)
-		{
-			myUser.image = JSON.parse(myUser.profile).avatar
-			$('.img-circle').attr('src', myUser.image)
-			$('.user-image').attr('src', myUser.image)
-		}
-		$('#TopRightName').text(myUser.fullName)
-		$('#hiddenName').text(myUser.fullName)
 		$('#sidebarName').text(myUser.fullName)
 		$('#profileForm [name="firstName"]').val(myUser.firstName)
 		$('#profileForm [name="lastName"]').val(myUser.lastName)

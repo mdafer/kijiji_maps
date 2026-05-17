@@ -11,7 +11,8 @@ module.exports = {
 			this.common=require('../helpers/common'),
 			this.scraper= require('../helpers/scraper'),
 			this.airbnbScraper= require('../helpers/airbnb-scraper'),
-			this.fbScraper= require('../helpers/fbscraper')
+			this.fbScraper= require('../helpers/fbscraper'),
+			this.quintoandarScraper= require('../helpers/quintoandar-scraper')
 		}
 		return this
 	},
