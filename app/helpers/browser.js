@@ -111,6 +111,59 @@ async function fetchPage(url, opts = {}) {
 	}
 }
 
+/**
+ * Long-lived airbnb.com origin page, used so that in-page fetch() requests
+ * inherit the browser's cookie jar + session — needed for /api/v3 POSTs
+ * (CSRF-without-token, datadome, _aat etc.).
+ */
+let _airbnbOriginPage = null
+let _airbnbOriginNavigating = null
+async function getAirbnbOriginPage() {
+	if (_airbnbOriginPage && !_airbnbOriginPage.isClosed()) {
+		try {
+			const url = _airbnbOriginPage.url()
+			if (url.startsWith('https://www.airbnb.com')) return _airbnbOriginPage
+		} catch(e) {}
+	}
+	if (_airbnbOriginNavigating) return _airbnbOriginNavigating
+	_airbnbOriginNavigating = (async () => {
+		const browser = await getBrowser()
+		const page = await browser.newPage()
+		await page.setViewport({ width: 1600, height: 1000 })
+		await page.evaluateOnNewDocument(() => {
+			Object.defineProperty(navigator, 'webdriver', { get: () => false })
+		})
+		// Visit a real search URL so the page picks up search-session cookies
+		// (some downstream APIs validate these — bare /homepage isn't enough).
+		await page.goto('https://www.airbnb.com/s/homes', { waitUntil: 'domcontentloaded', timeout: 30000 })
+		await new Promise(r => setTimeout(r, 1500))
+		_airbnbOriginPage = page
+		return page
+	})()
+	try { return await _airbnbOriginNavigating } finally { _airbnbOriginNavigating = null }
+}
+
+/**
+ * POST JSON to an Airbnb API endpoint via the origin page's fetch().
+ * Returns { status, body } where body is parsed JSON (or the raw text on parse failure).
+ */
+async function fetchJson(url, { method='GET', headers={}, body=null } = {}) {
+	const page = await getAirbnbOriginPage()
+	return await page.evaluate(async (u, m, h, b) => {
+		const resp = await fetch(u, {
+			method: m,
+			headers: h,
+			body: b,
+			credentials: 'include',
+			mode: 'cors'
+		})
+		const text = await resp.text()
+		let parsed
+		try { parsed = JSON.parse(text) } catch(e) { parsed = text }
+		return { status: resp.status, body: parsed }
+	}, url, method, headers, body)
+}
+
 async function seedCookies(cookieString, domain) {
 	const browser = await getBrowser()
 	const page = await browser.newPage()
@@ -125,4 +178,4 @@ async function seedCookies(cookieString, domain) {
 	}
 }
 
-module.exports = { getBrowser, fetchPage, seedCookies, resolveHosts, resolvePageDeps }
+module.exports = { getBrowser, fetchPage, fetchJson, getAirbnbOriginPage, seedCookies, resolveHosts, resolvePageDeps }

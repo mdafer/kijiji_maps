@@ -12,9 +12,17 @@ const Helpers = require('../helpers/includes'),
 	eachOfLimit = require('async/eachOfLimit'),
 	axios = require('axios'),
 	cheerio = require('cheerio'),
-	{ fetchPage, seedCookies } = require('../helpers/browser'),
-	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20',
-	AIRBNB_AVAILABILITY_HASH = 'b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914'
+	{ fetchPage, fetchJson, seedCookies } = require('../helpers/browser'),
+	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20'
+
+// Airbnb rotates the persisted-query sha256 for these operations periodically;
+// when an old hash is rejected the server replies with
+// {"exception_cls":"InvalidRequestException","exception_msg":"Rejecting legacy dora request not on Allowlist."}
+// We keep them mutable so refreshOperationHash() can swap in fresh ones
+// scraped from Airbnb's own JS bundles. Each is overridable via env var.
+let AIRBNB_AVAILABILITY_HASH = process.env.AIRBNB_AVAILABILITY_HASH || 'b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914'
+let AIRBNB_STAYS_SEARCH_HASH = process.env.AIRBNB_STAYS_SEARCH_HASH || 'c5e90954c2d8e7d797b8fb97ead8352cf53e4c858b0cb7b37a586b496e8b736f'
+const hashRefreshFailedAt = { PdpAvailabilityCalendar: 0, StaysSearch: 0 }
 
 // Strip query string (e.g. ?im_w=720) so SSR <img src> matches JSON baseUrl.
 function stripImageQuery(u) {
@@ -101,11 +109,159 @@ function extractBbox(pageUrl) {
 
 async function airbnbGet(url) {
 	const { status, html } = await fetchPage(url)
-	if (status >= 400) throw new Error(`Airbnb API returned ${status}`)
 	// Chromium wraps JSON responses in HTML — extract the text content
 	const match = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/) || html.match(/<body[^>]*>([\s\S]*?)<\/body>/)
 	const text = match ? match[1].replace(/<[^>]+>/g, '') : html.replace(/<[^>]+>/g, '')
-	try { return JSON.parse(text) } catch(e) { return text }
+	let body
+	try { body = JSON.parse(text) } catch(e) { body = text }
+	if (status >= 400) {
+		const e = new Error(`Airbnb API returned ${status}`)
+		e.status = status
+		e.body = body
+		throw e
+	}
+	return body
+}
+
+function isDoraAllowlistError(parsedOrErr) {
+	if (!parsedOrErr) return false
+	const msg = (parsedOrErr.exception_msg)
+		|| (parsedOrErr.body && parsedOrErr.body.exception_msg)
+		|| (typeof parsedOrErr.message === 'string' ? parsedOrErr.message : '')
+	return typeof msg === 'string' && msg.includes('Allowlist')
+}
+
+/**
+ * Try to scrape a fresh persisted-query sha256 hash for a given operation
+ * (e.g. PdpAvailabilityCalendar, StaysSearch) from Airbnb's own JS bundles.
+ * Returns the new hash string or null on failure. Best-effort: Airbnb's
+ * bundle layout changes occasionally, so callers fall back to surfacing the
+ * error to the user.
+ */
+async function refreshOperationHash(operationName, currentHash) {
+	const log = msg => Helpers.logger.log({print: `[hash-refresh:${operationName}] ${msg}`, channels: 'jobWarning'})
+	const hashRe = new RegExp(operationName + '[\\s\\S]{0,400}?([a-f0-9]{64})')
+	const probeUrls = [
+		'https://www.airbnb.com/s/homes',
+		'https://www.airbnb.com/'
+	]
+	let scriptsTried = 0
+	let scriptsFetched = 0
+	for (const probeUrl of probeUrls) {
+		log(`Probing ${probeUrl}`)
+		let html
+		try { html = await browserNavigate(probeUrl) } catch(e) {
+			log(`  ✗ navigate failed: ${e.message}`)
+			continue
+		}
+		if (!html) { log(`  ✗ empty HTML`); continue }
+		log(`  ✓ got ${html.length} chars of HTML`)
+
+		const inline = html.match(hashRe)
+		if (inline && inline[1]) {
+			if (inline[1] !== currentHash) {
+				log(`  ✓ found new hash inline: ${inline[1]}`)
+				return inline[1]
+			}
+			log(`  • inline hash matches current — keep scanning bundles`)
+		}
+
+		const scriptSrcs = [...html.matchAll(/<script[^>]+src="([^"]+\.js[^"]*)"/g)]
+			.map(m => m[1])
+			.filter(s => /muscache\.com|airbnb\.com/.test(s) && !/polyfill/i.test(s))
+		log(`  • ${scriptSrcs.length} candidate script bundles found`)
+		// Prioritise bundles likely to contain the persisted-query registry
+		scriptSrcs.sort((a, b) => {
+			const reKey = new RegExp(`niobe|persisted|operation|${operationName}`, 'i')
+			const score = s => (reKey.test(s) ? 0 : 1)
+			return score(a) - score(b)
+		})
+		for (const src of scriptSrcs.slice(0, 40)) {
+			scriptsTried++
+			const fullUrl = src.startsWith('http') ? src : (src.startsWith('//') ? 'https:' + src : 'https://www.airbnb.com' + src)
+			try {
+				const resp = await axios.get(fullUrl, { timeout: 15000, responseType: 'text', transformResponse: x => x })
+				scriptsFetched++
+				const text = typeof resp.data === 'string' ? resp.data : ''
+				const m = text.match(hashRe)
+				if (m && m[1] && m[1] !== currentHash) {
+					log(`  ✓ found new hash in bundle ${fullUrl.split('/').pop()}: ${m[1]}`)
+					return m[1]
+				}
+			} catch(e) { /* skip and try next */ }
+		}
+	}
+	log(`No fresh hash found after probing ${probeUrls.length} pages and ${scriptsFetched}/${scriptsTried} bundles`)
+	return null
+}
+
+/**
+ * POST a v3 persisted-query operation. Routes through the puppeteer airbnb.com
+ * origin page so cookies/CSRF/session are inherited automatically. Returns the
+ * parsed body, or throws an Error with .status and .body attached on non-2xx
+ * or on a dora Allowlist envelope.
+ */
+async function airbnbPostV3(operationName, hash, variables, currency = 'USD') {
+	const url = `https://www.airbnb.com/api/v3/${operationName}/${hash}?operationName=${operationName}&locale=en&currency=${encodeURIComponent(currency)}`
+	const body = JSON.stringify({
+		operationName,
+		variables,
+		extensions: { persistedQuery: { version: 1, sha256Hash: hash } }
+	})
+	const { status, body: parsed } = await fetchJson(url, {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+			'x-airbnb-api-key': AIRBNB_API_KEY,
+			'x-airbnb-graphql-platform': 'web',
+			'x-airbnb-graphql-platform-client': 'minimalist-niobe',
+			'x-niobe-short-circuited': 'true',
+			'x-csrf-without-token': '1'
+		},
+		body
+	})
+	if (status >= 400 || isDoraAllowlistError(parsed)) {
+		const e = new Error(`Airbnb ${operationName} returned ${status}${isDoraAllowlistError(parsed)?' (Allowlist)':''}`)
+		e.status = status
+		e.body = parsed
+		if (isDoraAllowlistError(parsed)) e.doraAllowlist = true
+		throw e
+	}
+	return parsed
+}
+
+/**
+ * Call a v3 operation with automatic hash refresh on Allowlist rejection.
+ * Returns parsed body or null. updateHash callback is given the fresh hash
+ * so the caller can persist it to the appropriate module-level let.
+ */
+async function airbnbV3WithHashRefresh(operationName, getHash, setHash, variables, currency, label) {
+	try {
+		return await airbnbPostV3(operationName, getHash(), variables, currency)
+	} catch(e) {
+		if (!e.doraAllowlist) throw e
+		const cooldownMs = 10 * 60 * 1000
+		if (Date.now() - hashRefreshFailedAt[operationName] < cooldownMs) {
+			Helpers.logger.log({print: `${label||operationName}: hash is stale; auto-refresh recently failed — set env var AIRBNB_${operationName==='StaysSearch'?'STAYS_SEARCH':'AVAILABILITY'}_HASH to a fresh sha256 and restart.`, channels: 'jobWarning'})
+			return null
+		}
+		Helpers.logger.log({print: `${label||operationName}: persisted-query hash rejected (Allowlist); attempting to auto-refresh…`, channels: 'jobWarning'})
+		const fresh = await refreshOperationHash(operationName, getHash())
+		if (!fresh) {
+			hashRefreshFailedAt[operationName] = Date.now()
+			Helpers.logger.log({print: `${label||operationName}: could not auto-refresh hash. Open DevTools on airbnb.com, copy the sha256 from a /api/v3/${operationName}/<HASH> request, and set env var AIRBNB_${operationName==='StaysSearch'?'STAYS_SEARCH':'AVAILABILITY'}_HASH=<hash> then restart.`, channels: 'jobWarning'})
+			return null
+		}
+		setHash(fresh)
+		Helpers.logger.log({print: `${label||operationName}: refreshed hash to ${fresh}. Retrying.`, channels: 'jobWarning'})
+		try {
+			return await airbnbPostV3(operationName, fresh, variables, currency)
+		} catch(e2) {
+			hashRefreshFailedAt[operationName] = Date.now()
+			Helpers.logger.log({print: `${label||operationName}: refreshed hash still rejected: ${e2.message}. Set env var manually and restart.`, channels: 'jobWarning'})
+			return null
+		}
+	}
 }
 
 async function browserNavigate(url) {
@@ -305,6 +461,161 @@ function extractPrice(pricing) {
 	return 0
 }
 
+// ---- v3 StaysSearch helpers ----------------------------------------------
+
+// Map of v2 explore_tabs param names → v3 StaysSearch rawParams filter names.
+const V2_TO_V3_FILTER = {
+	checkin: 'checkin', checkout: 'checkout',
+	adults: 'adults', children: 'children', infants: 'infants', pets: 'pets',
+	ne_lat: 'neLat', ne_lng: 'neLng', sw_lat: 'swLat', sw_lng: 'swLng',
+	search_by_map: 'searchByMap', zoom: 'zoomLevel', zoom_level: 'zoomLevel',
+	query: 'query', place_id: 'placeId', search_type: 'searchType',
+	price_min: 'priceMin', price_max: 'priceMax',
+	'room_types[]': 'roomTypes', 'property_type_id[]': 'propertyTypeId',
+	'amenities[]': 'amenities', 'refinement_paths[]': 'refinementPaths',
+	min_bedrooms: 'minBedrooms', min_beds: 'minBeds', min_bathrooms: 'minBathrooms',
+}
+
+// Treatment flags Airbnb's web client currently sends. Required by the
+// StaysSearch schema — empty array triggers ValidationError.
+const STAYS_SEARCH_TREATMENT_FLAGS = [
+	'feed_map_decouple_m11_treatment',
+	'stays_search_rehydration_treatment_desktop',
+	'stays_search_rehydration_treatment_moweb',
+	'selective_query_feed_map_homepage_desktop_treatment',
+	'selective_query_feed_map_homepage_moweb_treatment',
+]
+
+/**
+ * Build the StaysSearch GraphQL variables from a URLSearchParams-style
+ * apiParams object (the same one buildApiParams produces for v2). Adds
+ * the sibling top-level booleans and staysMapSearchRequestV2 mirror that
+ * the current schema requires (missing them → ValidationError @ col 131).
+ */
+function buildStaysSearchVariables(apiParams, cursorBase64) {
+	// Group values by v3 filterName (multi-value friendly)
+	const grouped = new Map()
+	for (const [k, v] of apiParams.entries()) {
+		if (k === '_format' || k === 'key' || k === 'items_per_grid' || k === 'items_offset' || k === 'section_offset' || k === 'search_session_id') continue
+		const v3 = V2_TO_V3_FILTER[k]
+		if (!v3) continue
+		if (!grouped.has(v3)) grouped.set(v3, [])
+		grouped.get(v3).push(String(v))
+	}
+	// Defaults Airbnb's own page always includes
+	if (!grouped.has('channel')) grouped.set('channel', ['EXPLORE'])
+	if (!grouped.has('searchMode')) grouped.set('searchMode', ['regular_search'])
+	if (!grouped.has('tabId')) grouped.set('tabId', ['home_tab'])
+	// Airbnb silently caps at 40 (asking for more gets the same 40 back).
+	if (!grouped.has('itemsPerGrid')) grouped.set('itemsPerGrid', ['40'])
+	if (!grouped.has('version')) grouped.set('version', ['1.8.8'])
+	if (!grouped.has('searchByMap')) grouped.set('searchByMap', ['true'])
+
+	// Pagination cursor goes through rawParams as well
+	if (cursorBase64) grouped.set('cursor', [cursorBase64])
+
+	const rawParams = [...grouped.entries()]
+		.sort(([a],[b]) => a.localeCompare(b))
+		.map(([filterName, filterValues]) => ({ filterName, filterValues }))
+
+	const request = {
+		metadataOnly: false,
+		requestedPageType: 'STAYS_SEARCH',
+		searchType: grouped.get('searchType') ? grouped.get('searchType')[0] : 'user_map_move',
+		treatmentFlags: STAYS_SEARCH_TREATMENT_FLAGS,
+		skipHydrationListingIds: [],
+		maxMapItems: 9999,
+		rawParams
+	}
+	const mapRequest = { ...request, maxMapItems: 9999 }
+	return {
+		staysSearchRequest: request,
+		staysMapSearchRequestV2: mapRequest,
+		skipExtendedSearchParams: false,
+		includeMapResults: true,
+		isLeanTreatment: false,
+		aiSearchEnabled: false,
+	}
+}
+
+/**
+ * Parse a v3 StaysSearch response into the internal listing shape used
+ * downstream. Only StaySearchResult entries carry full data; SkinnyListingItem
+ * are map-only refs and are skipped.
+ */
+function extractListingsFromStaysSearch(data) {
+	const out = []
+	const results = data && data.data && data.data.presentation && data.data.presentation.staysSearch
+		&& data.data.presentation.staysSearch.results
+	if (!results) return out
+	const items = results.searchResults || []
+	for (const item of items) {
+		if (item.__typename !== 'StaySearchResult') continue
+		const dsl = item.demandStayListing || {}
+		const id = decodeListingIdFromBase64(dsl.id) || ''
+		if (!id) continue
+		const coord = (dsl.location && dsl.location.coordinate) || {}
+		const sdp = item.structuredDisplayPrice || {}
+		const primary = sdp.primaryLine || {}
+		const priceStr = primary.discountedPrice || primary.price || ''
+		const price = parseFloat(String(priceStr).replace(/[^0-9.]/g, '')) || 0
+		const pics = (item.contextualPictures || []).map(p => p.picture || p.originalPicture || p.xlPicture || '').filter(Boolean)
+		const { bedrooms, bathrooms, beds } = parseStructuredContent(item.structuredContent)
+		const nameLoc = (item.nameLocalized && item.nameLocalized.localizedStringWithTranslationPreference)
+			|| (dsl.description && dsl.description.name && dsl.description.name.localizedStringWithTranslationPreference)
+			|| ''
+		out.push({
+			id,
+			title: nameLoc || item.title || '',
+			lat: coord.latitude || 0,
+			lon: coord.longitude || 0,
+			price,
+			url: '/rooms/' + id,
+			picture_url: pics[0] || '',
+			picture_urls: pics,
+			bedrooms, bathrooms, beds,
+			person_capacity: 0,
+			amenities: []
+		})
+	}
+	return out
+}
+
+function decodeListingIdFromBase64(b64) {
+	if (!b64 || typeof b64 !== 'string') return ''
+	try {
+		const decoded = Buffer.from(b64, 'base64').toString('utf8')
+		// Format: "DemandStayListing:<numericId>"
+		const m = decoded.match(/(\d+)$/)
+		return m ? m[1] : ''
+	} catch(e) { return '' }
+}
+
+function parseStructuredContent(sc) {
+	const out = { bedrooms: 0, bathrooms: 0, beds: 0 }
+	if (!sc) return out
+	const lines = [].concat(sc.primaryLine || [], sc.mapPrimaryLine || [])
+	for (const line of lines) {
+		const body = (line.body || '').toLowerCase()
+		const num = parseFloat((body.match(/[\d.]+/) || [0])[0]) || 0
+		if (!num) continue
+		if (/bedroom/.test(body)) out.bedrooms = out.bedrooms || num
+		else if (/bath/.test(body)) out.bathrooms = out.bathrooms || num
+		else if (/\bbed/.test(body)) out.beds = out.beds || num
+	}
+	return out
+}
+
+/**
+ * Decode a v3 pageCursor (base64 JSON) to its items_offset for logging.
+ */
+function decodeCursorOffset(b64) {
+	try {
+		const j = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'))
+		return j.items_offset != null ? j.items_offset : null
+	} catch(e) { return null }
+}
+
 /**
  * Fetch full details (photos, amenities) for a single listing via the Airbnb API
  * and update the DB record. Returns the updated fields.
@@ -351,6 +662,24 @@ async function fetchListingDetails(listingId, bookingParams) {
 	const photoCategories = {}
 	const amenityNames = []
 	const amenityIdMap = {}
+
+	// Amenities moved out of sections[AMENITIES_DEFAULT].section into
+	// data.node.pdpPresentation.amenities — the old path is now a placeholder
+	// with only __typename. Extract from the new path first.
+	const pdpAmenities = pdpEntry[1].data.node
+		&& pdpEntry[1].data.node.pdpPresentation
+		&& pdpEntry[1].data.node.pdpPresentation.amenities
+	if (pdpAmenities) {
+		const groups = pdpAmenities.seeAllAmenitiesGroups || pdpAmenities.previewAmenitiesGroups || []
+		groups.forEach(grp => {
+			(grp.amenities || []).forEach(a => {
+				if (a.available !== false && a.title) {
+					amenityNames.push(a.title)
+					if (a.id) amenityIdMap[a.title] = a.id
+				}
+			})
+		})
+	}
 
 	for (const s of sections) {
 		const sid = s.sectionId || ''
@@ -438,43 +767,33 @@ async function fetchListingAvailability(listingId) {
 		}
 	}
 
-	const extensions = {
-		persistedQuery: {
-			version: 1,
-			sha256Hash: AIRBNB_AVAILABILITY_HASH
-		}
-	}
-
-	const params = new URLSearchParams()
-	params.set('operationName', 'PdpAvailabilityCalendar')
-	params.set('locale', 'en')
-	params.set('currency', 'USD')
-	params.set('variables', JSON.stringify(variables))
-	params.set('extensions', JSON.stringify(extensions))
-
-	const url = `https://www.airbnb.com/api/v3/PdpAvailabilityCalendar/${AIRBNB_AVAILABILITY_HASH}?${params.toString()}`
-
-	try {
-		const response = await airbnbGet(url)
-		if (!response || !response.data) return null
-
-		const calendarMonths = (response.data.merlin && response.data.merlin.pdpAvailabilityCalendar && response.data.merlin.pdpAvailabilityCalendar.calendarMonths) || []
-		const availability = {}
-		calendarMonths.forEach(m => {
-			if (m.days) {
-				m.days.forEach(d => {
-					availability[d.calendarDate] = {
-						available: d.available,
-						price: d.price ? d.price.localPriceFormatted : null
-					}
-				})
-			}
-		})
-		return availability
-	} catch(e) {
+	const response = await airbnbV3WithHashRefresh(
+		'PdpAvailabilityCalendar',
+		() => AIRBNB_AVAILABILITY_HASH,
+		v => { AIRBNB_AVAILABILITY_HASH = v },
+		variables,
+		'USD',
+		`availability(${listingId})`
+	).catch(e => {
 		Helpers.logger.log({print: `Error fetching availability for ${listingId}: ${e.message}`, channels: 'jobWarning'})
 		return null
-	}
+	})
+
+	if (!response || !response.data) return null
+
+	const calendarMonths = (response.data.merlin && response.data.merlin.pdpAvailabilityCalendar && response.data.merlin.pdpAvailabilityCalendar.calendarMonths) || []
+	const availability = {}
+	calendarMonths.forEach(m => {
+		if (m.days) {
+			m.days.forEach(d => {
+				availability[d.calendarDate] = {
+					available: d.available,
+					price: d.price ? d.price.localPriceFormatted : null
+				}
+			})
+		}
+	})
+	return availability
 }
 
 /**
@@ -528,28 +847,46 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0, bbox = n
 					if (apiParams.has('zoom_level')) apiParams.set('zoom_level', zoomStr)
 				}
 			}
-			if (offset > 0) apiParams.set('items_offset', String(offset))
-			// Airbnb requires search_session_id and section_offset from previous
-			// responses to maintain pagination state — without these, later pages
-			// return empty listing sections (soft-block).
-			if (searchSessionId) apiParams.set('search_session_id', searchSessionId)
-			if (sectionOffset > 0) apiParams.set('section_offset', String(sectionOffset))
-			const apiUrl = 'https://www.airbnb.com/api/v2/explore_tabs?' + apiParams.toString()
+			// Build v3 StaysSearch variables. Pagination uses base64 cursors:
+			// each cursor encodes {section_offset, items_offset, version}.
+			const cursorB64 = offset > 0
+				? Buffer.from(JSON.stringify({section_offset: sectionOffset, items_offset: offset, version: 1})).toString('base64')
+				: null
+			const variables = buildStaysSearchVariables(apiParams, cursorB64)
+			const apiUrl = `https://www.airbnb.com/api/v3/StaysSearch/${AIRBNB_STAYS_SEARCH_HASH}?operationName=StaysSearch&locale=en&currency=USD`
 
-			Helpers.logger.log({print: `[${rangeLabel}] Fetching Airbnb API (offset: ${offset}) - ${apiUrl}`, channels:params.jobId+'jobUpdate'})
-			const apiData = await airbnbGet(apiUrl)
+			Helpers.logger.log({print: `[${rangeLabel}] Fetching StaysSearch (offset: ${offset}) - ${apiUrl}`, channels:params.jobId+'jobUpdate'})
+			const apiData = await airbnbV3WithHashRefresh(
+				'StaysSearch',
+				() => AIRBNB_STAYS_SEARCH_HASH,
+				v => { AIRBNB_STAYS_SEARCH_HASH = v },
+				variables,
+				'USD',
+				`[${rangeLabel}] search`
+			)
 
-			if (!apiData || typeof apiData !== 'object' || !apiData.explore_tabs) {
-				throw new Error('Invalid Airbnb API response (possibly rate limited or blocked)')
+			if (!apiData || !apiData.data) {
+				throw new Error('Invalid Airbnb StaysSearch response (possibly rate limited, blocked, or hash still invalid)')
 			}
 
-			let listings = []
-			let paginationMeta = null
-			try {
-				listings = extractListingsFromApiResponse(apiData)
-				const tabs = apiData.explore_tabs || []
-				if (tabs.length) paginationMeta = tabs[0].pagination_metadata
-			} catch(e) {}
+			const listings = extractListingsFromStaysSearch(apiData)
+			const results = apiData.data.presentation && apiData.data.presentation.staysSearch
+				&& apiData.data.presentation.staysSearch.results
+			const pageCursors = (results && results.paginationInfo && results.paginationInfo.pageCursors) || []
+			// Mirror old shape for downstream logic
+			let nextOffset = null
+			if (pageCursors.length) {
+				// Find the cursor matching current offset, then take the next
+				const currentIdx = pageCursors.findIndex(c => decodeCursorOffset(c) === offset)
+				const nextCursor = currentIdx >= 0 && currentIdx + 1 < pageCursors.length ? pageCursors[currentIdx + 1] : null
+				if (nextCursor) nextOffset = decodeCursorOffset(nextCursor)
+			}
+			const paginationMeta = {
+				total_count: (results && results.searchResults && results.searchResults.length) || 0,
+				items_offset: nextOffset,
+				has_next_page: nextOffset != null,
+				section_offset: sectionOffset
+			}
 
 			if (!listings.length) {
 				// Check if the response explicitly says 0 total results — in this case it's not a soft-block
@@ -582,9 +919,22 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0, bbox = n
 						hasMore = false
 						break
 					}
-					listings = extractListingsFromApiResponse(manualData)
-					const tabs = manualData.explore_tabs || []
-					if (tabs.length) paginationMeta = tabs[0].pagination_metadata
+					// Try v3 shape first; fall back to v2 if the pasted response is legacy
+					const v3List = extractListingsFromStaysSearch(manualData)
+					if (v3List.length) {
+						listings = v3List
+						const r = manualData.data && manualData.data.presentation
+							&& manualData.data.presentation.staysSearch
+							&& manualData.data.presentation.staysSearch.results
+						const cursors = (r && r.paginationInfo && r.paginationInfo.pageCursors) || []
+						const idx = cursors.findIndex(c => decodeCursorOffset(c) === offset)
+						const next = idx >= 0 && idx + 1 < cursors.length ? decodeCursorOffset(cursors[idx + 1]) : null
+						paginationMeta = { total_count: v3List.length, items_offset: next, has_next_page: next != null, section_offset: sectionOffset }
+					} else {
+						listings = extractListingsFromApiResponse(manualData)
+						const tabs = manualData.explore_tabs || []
+						if (tabs.length) paginationMeta = tabs[0].pagination_metadata
+					}
 					if (!listings.length) {
 						// If user pasted something but it's still empty, check total_count again
 						const manualTotalCount = paginationMeta ? (paginationMeta.total_count || paginationMeta.totalCount || 0) : null
@@ -652,8 +1002,21 @@ async function scrapeRange(params, priceMin, priceMax, startOffset = 0, bbox = n
 			await Helpers.common.sleep(delay)
 		} catch(e) {
 			params.pageNumber--
+			// Surface response body so we can tell apart soft-blocks, Allowlist rejections, rate limits, etc.
+			let bodyPreview = ''
+			if (e.body !== undefined) {
+				try {
+					const s = typeof e.body === 'string' ? e.body : JSON.stringify(e.body)
+					bodyPreview = ` — body: ${s.length > 500 ? s.slice(0, 500) + '…' : s}`
+				} catch(_) {}
+			}
+			if (isDoraAllowlistError(e)) {
+				Helpers.logger.log({print: `[${rangeLabel}] Airbnb rejected StaysSearch as legacy dora (Allowlist) and auto-refresh did not recover. Aborting range. Status=${e.status||'?'}${bodyPreview}`, channels:params.jobId+'jobWarning'})
+				hasMore = false
+				break
+			}
 			const backoff = jitteredDelay(requestErrorDelay())
-			Helpers.logger.log({print: `[${rangeLabel}] Retrying Airbnb page in ${Math.round(backoff/1000)}s: ${e}`, channels:params.jobId+'jobWarning'})
+			Helpers.logger.log({print: `[${rangeLabel}] Retrying Airbnb page in ${Math.round(backoff/1000)}s: ${e}${bodyPreview}`, channels:params.jobId+'jobWarning'})
 			await Helpers.common.sleep(backoff)
 		}
 	}
