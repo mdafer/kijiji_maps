@@ -12,16 +12,15 @@ const Helpers = require('../helpers/includes'),
 	eachOfLimit = require('async/eachOfLimit'),
 	axios = require('axios'),
 	cheerio = require('cheerio'),
-	{ fetchPage, fetchJson, seedCookies } = require('../helpers/browser'),
-	AIRBNB_API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20'
+	{ fetchPage, fetchJson, seedCookies } = require('../helpers/browser')
 
-// Airbnb rotates the persisted-query sha256 for these operations periodically;
-// when an old hash is rejected the server replies with
-// {"exception_cls":"InvalidRequestException","exception_msg":"Rejecting legacy dora request not on Allowlist."}
-// We keep them mutable so refreshOperationHash() can swap in fresh ones
-// scraped from Airbnb's own JS bundles. Each is overridable via env var.
-let AIRBNB_AVAILABILITY_HASH = process.env.AIRBNB_AVAILABILITY_HASH || 'b23335819df0dc391a338d665e2ee2f5d3bff19181d05c0b39bc6c5aac403914'
-let AIRBNB_STAYS_SEARCH_HASH = process.env.AIRBNB_STAYS_SEARCH_HASH || 'c5e90954c2d8e7d797b8fb97ead8352cf53e4c858b0cb7b37a586b496e8b736f'
+// Airbnb public web API key + persisted-query sha256 hashes are sourced from
+// example.env. Hashes are mutable because refreshOperationHash() swaps in
+// fresh ones scraped from Airbnb's JS bundles when the server rejects them
+// with {"exception_msg":"Rejecting legacy dora request not on Allowlist."}.
+const AIRBNB_API_KEY = process.env.AIRBNB_API_KEY
+let AIRBNB_AVAILABILITY_HASH = process.env.AIRBNB_AVAILABILITY_HASH
+let AIRBNB_STAYS_SEARCH_HASH = process.env.AIRBNB_STAYS_SEARCH_HASH
 const hashRefreshFailedAt = { PdpAvailabilityCalendar: 0, StaysSearch: 0 }
 
 // Strip query string (e.g. ?im_w=720) so SSR <img src> matches JSON baseUrl.
